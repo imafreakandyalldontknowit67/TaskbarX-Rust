@@ -6,7 +6,7 @@ use std::{
     cell::RefCell,
     sync::mpsc::{self, Receiver, Sender, TryRecvError},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use taskbarx_configurator::{
     controller::{Action, Controller, Outcome},
@@ -54,8 +54,32 @@ const DIAGNOSE: u16 = 206;
 const ABOUT: u16 = 207;
 const CLOSE: u16 = 208;
 const OUTPUT: u16 = 301;
-const CONTENT_W: i32 = 780;
-const CONTENT_H: i32 = 842;
+const CONTENT_W: i32 = 850;
+const CONTENT_H: i32 = 600;
+const NAV: u16 = 500;
+const TITLE: u16 = 490;
+const STATUS: u16 = 302;
+const RADIO: u16 = 600;
+const SLIDER: u16 = 700;
+const TBM_GETPOS: u32 = WM_USER; // commctrl.h: trackbar position query
+const PREVIEW: u16 = 800;
+const PREVIEW_TRACK: u16 = 801;
+const PAGES: [&str; 9] = [
+    "Style",
+    "Animation",
+    "Position",
+    "Startup",
+    "Extra",
+    "Mechanics",
+    "Start Button",
+    "About",
+    "Uninstall",
+];
+// Segoe MDL2 Assets glyphs, escaped to survive shell/code-page conversions.
+const ICONS: [&str; 9] = [
+    "\u{E790}", "\u{E768}", "\u{E8AB}", "\u{E7E8}", "\u{E713}", "\u{E9D9}", "\u{E80F}", "\u{E946}",
+    "\u{E74D}",
+];
 // WinUser.h static-control styles (windows metadata otherwise places these in
 // the unrelated SystemServices feature).
 const SS_LEFT: u32 = 0;
@@ -90,6 +114,7 @@ fn px(value: i32, dpi: u32) -> i32 {
 }
 
 struct Item {
+    page: i32,
     id: u16,
     hwnd: HWND,
     x: i32,
@@ -103,6 +128,9 @@ enum Event {
 }
 struct Ui {
     hwnd: HWND,
+    page: i32,
+    building_page: i32,
+    preview: Option<Instant>,
     items: Vec<Item>,
     dpi: u32,
     font: HFONT,
@@ -166,6 +194,7 @@ impl Ui {
         )
         .map_err(winerr)?;
         self.items.push(Item {
+            page: self.building_page,
             id,
             hwnd,
             x,
@@ -177,7 +206,7 @@ impl Ui {
             hwnd,
             WM_SETFONT,
             Some(WPARAM(self.font.0 as usize)),
-            Some(LPARAM(1)),
+            Some(LPARAM(0)),
         );
         Ok(hwnd)
     }
@@ -254,28 +283,324 @@ impl Ui {
         SendMessageW(hwnd, CB_SETMINVISIBLE, Some(WPARAM(12)), None);
         Ok(())
     }
+    unsafe fn button(
+        &mut self,
+        id: u16,
+        text: &str,
+        x: i32,
+        y: i32,
+        width: i32,
+    ) -> Result<(), String> {
+        self.add(
+            id,
+            w!("BUTTON"),
+            text,
+            WS_TABSTOP | WINDOW_STYLE(BS_PUSHBUTTON as u32),
+            x,
+            y,
+            width,
+            32,
+        )?;
+        Ok(())
+    }
+    unsafe fn check(
+        &mut self,
+        id: u16,
+        text: &str,
+        x: i32,
+        y: i32,
+        width: i32,
+    ) -> Result<(), String> {
+        self.add(
+            id,
+            w!("BUTTON"),
+            text,
+            WS_TABSTOP | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
+            x,
+            y,
+            width,
+            30,
+        )?;
+        Ok(())
+    }
+    unsafe fn unavailable(&mut self, text: &str, x: i32, y: i32, width: i32) -> Result<(), String> {
+        let h = self.add(
+            0,
+            w!("BUTTON"),
+            text,
+            WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
+            x,
+            y,
+            width,
+            28,
+        )?;
+        let _ = EnableWindow(h, false);
+        Ok(())
+    }
+    unsafe fn show_page(&mut self, page: i32) {
+        self.page = page.clamp(0, 8);
+        self.set_text(TITLE, PAGES[self.page as usize]);
+        self.scroll_x = 0;
+        self.scroll_y = 0;
+        self.layout();
+        let _ = InvalidateRect(Some(self.hwnd), None, true);
+    }
     unsafe fn build(&mut self, options: &Options) -> Result<(), String> {
         self.replace_font()?;
-        self.label(
-            "TaskbarX — Windows 10 classic taskbar controls",
-            20,
-            12,
-            740,
+        let _ = InitCommonControlsEx(&INITCOMMONCONTROLSEX {
+            dwSize: std::mem::size_of::<INITCOMMONCONTROLSEX>() as u32,
+            dwICC: ICC_BAR_CLASSES,
+        });
+        self.building_page = -1;
+        self.label("TaskbarX", 16, 20, 150, 28)?;
+        self.label("Configurator - Rust", 16, 49, 156, 22)?;
+        for (i, name) in PAGES.iter().enumerate() {
+            self.add(
+                NAV + i as u16,
+                w!("BUTTON"),
+                name,
+                WS_TABSTOP | WINDOW_STYLE(BS_OWNERDRAW as u32),
+                0,
+                92 + i as i32 * 43,
+                178,
+                42,
+            )?;
+        }
+        self.add(
+            TITLE,
+            w!("STATIC"),
+            "Style",
+            WINDOW_STYLE(SS_OWNERDRAW),
+            200,
+            43,
+            610,
+            36,
+        )?;
+        for (id, text, x, width) in [
+            (STOP, "Stop TaskbarX", 16, 150),
+            (RESET, "Reset", 200, 90),
+            (SAVE, "Save", 300, 90),
+            (RELOAD, "Reload", 400, 90),
+            (APPLY, "Apply", 714, 110),
+        ] {
+            self.button(id, text, x, 548, width)?;
+        }
+        self.add(
+            STATUS,
+            w!("STATIC"),
+            "Loading settings...",
+            WINDOW_STYLE(SS_LEFT),
+            200,
+            516,
+            624,
             24,
         )?;
-        self.label("Native Windows 11 taskbars have limited/unsupported behavior. Read diagnostics before applying.", 20, 38, 740, 38)?;
-        self.label("Engine:", 20, 79, 70, 22)?;
+
+        self.building_page = 0;
+        // Keep the protocol's canonical style values in a hidden combo; visible
+        // radios use the same validated selection without duplicating settings.
+        self.building_page = -2;
+        self.combo(STYLE, "", &STYLES, 200, 90)?;
+        self.building_page = 0;
+        for (index, label, y) in [
+            (0, "Default", 94),
+            (1, "Transparent", 131),
+            (4, "Opaque", 205),
+            (2, "Blur", 242),
+            (3, "Acrylic (can flicker)", 279),
+        ] {
+            self.add(
+                RADIO + index,
+                w!("BUTTON"),
+                label,
+                WS_TABSTOP | WINDOW_STYLE(BS_RADIOBUTTON as u32),
+                201,
+                y,
+                245,
+                30,
+            )?;
+        }
+        let h = self.add(
+            0,
+            w!("BUTTON"),
+            "Transparent Gradient",
+            WINDOW_STYLE(BS_RADIOBUTTON as u32),
+            201,
+            168,
+            240,
+            30,
+        )?;
+        let _ = EnableWindow(h, false);
+        self.label("Total Opacity", 548, 96, 200, 24)?;
+        self.label("Primary taskbar", 515, 132, 150, 24)?;
+        self.label("Secondary taskbar", 515, 170, 155, 24)?;
+        self.label("Not ported", 684, 132, 130, 24)?;
+        self.label("Not ported", 684, 170, 130, 24)?;
+        self.label("Corner Radius / Taskbar Segments", 515, 224, 300, 24)?;
+        self.label("Not available in the Rust engine yet", 515, 252, 300, 38)?;
+        self.unavailable("Switch back to Default on maximized window", 201, 322, 600)?;
+        self.label(
+            "Gray options are not ported. Color controls below work with supported styles.",
+            201,
+            357,
+            620,
+            22,
+        )?;
+        self.add(
+            SWATCH,
+            w!("STATIC"),
+            "Color preview",
+            WINDOW_STYLE(SS_OWNERDRAW),
+            201,
+            392,
+            132,
+            110,
+        )?;
+        for (i, (id, label)) in [
+            (RED, "Red"),
+            (GREEN, "Green"),
+            (BLUE, "Blue"),
+            (ALPHA, "Alpha"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let y = 389 + i as i32 * 29;
+            self.label(label, 350, y + 4, 55, 22)?;
+            let slider = self.add(
+                SLIDER + i as u16,
+                w!("msctls_trackbar32"),
+                label,
+                WS_TABSTOP | WINDOW_STYLE(TBS_NOTICKS),
+                405,
+                y,
+                310,
+                26,
+            )?;
+            SendMessageW(
+                slider,
+                TBM_SETRANGE,
+                Some(WPARAM(1)),
+                Some(LPARAM(255 << 16)),
+            );
+            self.add(
+                *id,
+                w!("EDIT"),
+                "",
+                WS_BORDER | WS_TABSTOP | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
+                730,
+                y,
+                70,
+                24,
+            )?;
+        }
+        self.building_page = 1;
+        self.combo(ANIMATION, "Animation Style", &ANIMATIONS, 201, 96)?;
+        self.label("Animation Style OnBattery", 201, 170, 330, 24)?;
+        self.label(
+            "Uses the same animation - battery override not ported",
+            201,
+            198,
+            580,
+            28,
+        )?;
+        self.edit(DURATION, "Animation Speed (ms)", 201, 251, 180)?;
+        self.button(PREVIEW, "Preview", 201, 335, 90)?;
+        let preview = self.add(
+            PREVIEW_TRACK,
+            w!("msctls_trackbar32"),
+            "Local animation preview",
+            WINDOW_STYLE(TBS_NOTICKS),
+            308,
+            335,
+            490,
+            32,
+        )?;
+        SendMessageW(
+            preview,
+            TBM_SETRANGE,
+            Some(WPARAM(1)),
+            Some(LPARAM(1000 << 16)),
+        );
+        let _ = EnableWindow(preview, false);
+        self.label(
+            "Preview animates only this slider. It does not move your taskbar.",
+            201,
+            394,
+            610,
+            45,
+        )?;
+        self.label(
+            "42 original easing choices - 0 ms means instant",
+            201,
+            450,
+            610,
+            24,
+        )?;
+        self.building_page = 2;
+        self.edit(PRIMARY_OFFSET, "Primary Taskbar Offset (px)", 201, 96, 260)?;
+        self.edit(
+            SECONDARY_OFFSET,
+            "Secondary Taskbar Offset (px)",
+            201,
+            170,
+            260,
+        )?;
+        self.label("Skip Resolution", 201, 245, 260, 24)?;
+        self.label(
+            "Not ported - resolution-based exceptions are unavailable.",
+            201,
+            274,
+            610,
+            40,
+        )?;
+        self.check(BETWEEN, "Compensate Tray Clock etc...", 201, 374, 590)?;
+        self.check(CENTER, "Center Taskbar", 201, 419, 590)?;
+        self.label(
+            "Offsets are relative to the center. Negative numbers move left / up.",
+            201,
+            466,
+            620,
+            30,
+        )?;
+        self.building_page = 3;
+        self.label("Startup", 201, 104, 600, 30)?;
+        self.label("The original Configurator used Windows Task Scheduler.\nThis Rust version does not yet provide startup registration.",201,151,600,75)?;
+        self.label("Opening this window, saving or applying settings will never create\na scheduled task or silently enable automatic startup.",201,268,610,75)?;
+        self.building_page = 4;
+        self.check(PRIMARY, "Primary taskbar", 201, 102, 600)?;
+        self.check(SECONDARY, "Secondary taskbars", 201, 147, 600)?;
+        self.label(
+            "Choose which taskbars receive centering and styling.",
+            201,
+            199,
+            600,
+            45,
+        )?;
+        self.unavailable("Hide primary Start button (not ported)", 201, 270, 610)?;
+        self.unavailable("Hide secondary Start button (not ported)", 201, 310, 610)?;
+        self.unavailable("Hide tray area (not ported)", 201, 350, 610)?;
+        self.unavailable(
+            "Pause on fullscreen / maximized windows (not ported)",
+            201,
+            390,
+            610,
+        )?;
+        self.building_page = 5;
+        self.edit(POLL, "Refresh Rate (ms)", 201, 96, 260)?;
+        self.button(DIAGNOSE, "Read-only diagnostics", 490, 117, 310)?;
+        self.label("Engine", 201, 164, 100, 22)?;
         self.add(
             401,
             w!("EDIT"),
             &options.engine.display().to_string(),
-            WS_TABSTOP | WS_BORDER | WINDOW_STYLE(ES_READONLY as u32 | ES_AUTOHSCROLL as u32),
-            94,
-            76,
-            666,
-            26,
+            WS_BORDER | WS_TABSTOP | WINDOW_STYLE(ES_READONLY as u32 | ES_AUTOHSCROLL as u32),
+            201,
+            188,
+            600,
+            25,
         )?;
-        self.label("Config:", 20, 111, 70, 22)?;
+        self.label("Settings file", 201, 225, 200, 22)?;
         self.add(
             402,
             w!("EDIT"),
@@ -283,156 +608,68 @@ impl Ui {
                 .config
                 .as_ref()
                 .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "Engine default location (no --config override)".into()),
-            WS_TABSTOP | WS_BORDER | WINDOW_STYLE(ES_READONLY as u32 | ES_AUTOHSCROLL as u32),
-            94,
-            108,
-            666,
-            26,
+                .unwrap_or_else(|| "%APPDATA%\\TaskbarX-Rust\\settings.json".into()),
+            WS_BORDER | WS_TABSTOP | WINDOW_STYLE(ES_READONLY as u32 | ES_AUTOHSCROLL as u32),
+            201,
+            249,
+            600,
+            25,
         )?;
-        self.add(
-            CENTER,
-            w!("BUTTON"),
-            "&Center taskbar icons",
-            WS_TABSTOP | WS_GROUP | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-            20,
-            146,
-            360,
-            26,
-        )?;
-        self.label(
-            "Selection affects styling AND centering.",
-            400,
-            148,
-            360,
-            40,
-        )?;
-        self.add(
-            PRIMARY,
-            w!("BUTTON"),
-            "&Primary taskbar",
-            WS_TABSTOP | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-            20,
-            177,
-            360,
-            26,
-        )?;
-        self.add(
-            SECONDARY,
-            w!("BUTTON"),
-            "Seco&ndary taskbars",
-            WS_TABSTOP | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-            400,
-            177,
-            360,
-            26,
-        )?;
-        self.add(
-            BETWEEN,
-            w!("BUTTON"),
-            "Center &between Start/search and the tray",
-            WS_TABSTOP | WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-            20,
-            208,
-            740,
-            26,
-        )?;
-        self.edit(
-            PRIMARY_OFFSET,
-            "Primary &offset (physical px, -10000 to 10000)",
-            20,
-            244,
-            360,
-        )?;
-        self.edit(
-            SECONDARY_OFFSET,
-            "Secondary offset (physical p&x, -10000 to 10000)",
-            400,
-            244,
-            360,
-        )?;
-        self.combo(ANIMATION, "&Easing (42 choices)", &ANIMATIONS, 20, 302)?;
-        self.edit(
-            DURATION,
-            "Animation &duration (0–10000 ms; 0 = instant)",
-            400,
-            302,
-            360,
-        )?;
-        self.edit(POLL, "Refresh &interval (50–10000 ms)", 20, 360, 360)?;
-        self.combo(STYLE, "Taskbar st&yle", &STYLES, 400, 360)?;
-        self.label(
-            "RGBA color — each component 0–255. Preview is local; it never changes the taskbar.",
-            20,
-            422,
-            740,
-            24,
-        )?;
-        self.edit(RED, "Red", 20, 452, 100)?;
-        self.edit(GREEN, "Green", 140, 452, 100)?;
-        self.edit(BLUE, "Blue", 260, 452, 100)?;
-        self.edit(ALPHA, "Alpha", 380, 452, 100)?;
-        self.add(
-            SWATCH,
-            w!("STATIC"),
-            "Local color swatch",
-            WINDOW_STYLE(SS_OWNERDRAW),
-            520,
-            452,
-            240,
-            50,
-        )?;
-        self.label("Alpha over checkerboard (preview only)", 520, 506, 240, 38)?;
-        for (id, text, x, y, width) in [
-            (SAVE, "&Save settings", 20, 550, 170),
-            (APPLY, "&Apply / start", 200, 550, 170),
-            (STOP, "S&top and restore", 380, 550, 180),
-            (RELOAD, "&Reload", 570, 550, 190),
-            (RESET, "Reset &form to defaults", 20, 590, 230),
-            (DIAGNOSE, "Read-only dia&gnostics", 260, 590, 230),
-            (ABOUT, "Attribution", 500, 590, 130),
-            (CLOSE, "Close", 640, 590, 120),
-        ] {
-            self.add(
-                id,
-                w!("BUTTON"),
-                text,
-                WS_TABSTOP | WINDOW_STYLE(BS_PUSHBUTTON as u32),
-                x,
-                y,
-                width,
-                32,
-            )?;
-        }
-        self.label(
-            "Status / engine output (select text and Ctrl+C to copy):",
-            20,
-            634,
-            740,
-            22,
-        )?;
+        self.label("Status / diagnostics", 201, 288, 600, 22)?;
         let output = self.add(
             OUTPUT,
             w!("EDIT"),
-            "Loading settings through config show. No taskbar changes.",
+            "Loading settings",
             WS_TABSTOP
                 | WS_BORDER
                 | WS_VSCROLL
                 | WINDOW_STYLE(ES_MULTILINE as u32 | ES_AUTOVSCROLL as u32 | ES_READONLY as u32),
-            20,
-            660,
-            740,
-            120,
+            201,
+            314,
+            600,
+            180,
         )?;
         SendMessageW(output, EM_SETLIMITTEXT, Some(WPARAM(512 * 1024)), None);
-        self.label("Closing this configurator does NOT stop a separately running engine.\nNothing registers startup or creates scheduled tasks.", 20, 790, 740, 44)?;
-        self.layout();
+        self.building_page = 6;
+        self.label("Custom Start Button", 201, 104, 600, 30)?;
+        self.label("The original Start-button shortcut workflow is not ported.\nThis configurator will not hide or replace your Start button.",201,160,600,85)?;
+        self.label(
+            "Your Windows Start menu continues to work normally.",
+            201,
+            295,
+            600,
+            45,
+        )?;
+        self.building_page = 7;
+        self.label("TaskbarX", 201, 105, 600, 35)?;
+        self.label(
+            "Rust rewrite - original interface by Chris Andriessen",
+            201,
+            153,
+            600,
+            30,
+        )?;
+        self.label("An independent rewrite of ChrisAnd1998/TaskbarX.\nNative Rust / Win32 - no .NET or browser runtime.\n\nDesigned for the classic Windows 10 taskbar.\nThe modern Windows 11 taskbar is unsupported.",201,208,600,145)?;
+        self.button(ABOUT, "MIT license / attribution", 201, 389, 280)?;
+        self.label("Closing the configurator leaves the centering engine running.\nUse Stop TaskbarX to restore and stop it.",201,445,600,50)?;
+        self.building_page = 8;
+        self.label("Remove TaskbarX Rust", 201, 104, 600, 35)?;
+        self.label("1. Click Stop TaskbarX at the bottom left.\n2. Close this configurator.\n3. Delete the portable application folder when you no longer need it.\n\nSettings are stored in %APPDATA%\\TaskbarX-Rust.\nNo startup task or registry startup entry is created by this app.",201,165,610,200)?;
+        self.label(
+            "This page never deletes files automatically.",
+            201,
+            416,
+            600,
+            35,
+        )?;
+        self.building_page = -1;
+        self.show_page(0);
         Ok(())
     }
 
     unsafe fn replace_font(&mut self) -> Result<(), String> {
         let font = CreateFontW(
-            -px(16, self.dpi),
+            -px(14, self.dpi),
             0,
             0,
             0,
@@ -456,7 +693,7 @@ impl Ui {
                 item.hwnd,
                 WM_SETFONT,
                 Some(WPARAM(font.0 as usize)),
-                Some(LPARAM(1)),
+                Some(LPARAM(0)),
             );
         }
         if !old.is_invalid() {
@@ -502,20 +739,41 @@ impl Ui {
             }
         }
         for item in &self.items {
+            let _ = ShowWindow(
+                item.hwnd,
+                if item.page == -1 || item.page == self.page {
+                    SW_SHOW
+                } else {
+                    SW_HIDE
+                },
+            );
             let _ = MoveWindow(
                 item.hwnd,
                 px(item.x, self.dpi) - self.scroll_x,
                 px(item.y, self.dpi) - self.scroll_y,
                 px(item.w, self.dpi),
                 px(item.h, self.dpi),
-                true,
+                false,
             );
         }
-        let _ = InvalidateRect(Some(self.hwnd), None, true);
+        // Defer repaint until the window procedure has released RefCell<Ui>.
+        // MoveWindow(..., true) synchronously sent WM_DRAWITEM while borrowed,
+        // causing owner-drawn controls to skip painting and retain old pixels.
+        let _ = RedrawWindow(
+            Some(self.hwnd),
+            None,
+            None,
+            RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
+        );
     }
 
     unsafe fn ensure_focus_visible(&mut self) {
         let focus = GetFocus();
+        if let Some(page) = self.items.iter().find(|i| i.hwnd == focus).map(|i| i.page) {
+            if page >= 0 && page != self.page {
+                self.show_page(page);
+            }
+        }
         if let Some(item) = self.items.iter().find(|i| i.hwnd == focus) {
             let mut rect = RECT::default();
             if GetClientRect(self.hwnd, &mut rect).is_err() {
@@ -582,6 +840,10 @@ impl Ui {
         String::from_utf16_lossy(&buffer[..len.max(0) as usize])
     }
     unsafe fn set_text(&self, id: u16, text: &str) {
+        if id == OUTPUT {
+            let summary = text.lines().next().unwrap_or("");
+            let _ = SetWindowTextW(self.control(STATUS), PCWSTR(wide(summary).as_ptr()));
+        }
         let _ = SetWindowTextW(
             self.control(id),
             PCWSTR(wide(&text.replace('\n', "\r\n").replace("\r\r\n", "\r\n")).as_ptr()),
@@ -657,12 +919,20 @@ impl Ui {
                 None,
             );
         }
+        self.sync_style();
+        self.sync_sliders();
         self.has_form = true;
         self.populating = false;
         let _ = InvalidateRect(Some(self.control(SWATCH)), None, true);
     }
     unsafe fn availability(&self) {
         for item in &self.items {
+            if (RADIO..RADIO + 5).contains(&item.id)
+                || (SLIDER..SLIDER + 4).contains(&item.id)
+                || item.id == PREVIEW
+            {
+                let _ = EnableWindow(item.hwnd, !self.busy && self.has_form);
+            }
             if (CENTER..=ALPHA).contains(&item.id) || (SAVE..=ABOUT).contains(&item.id) {
                 let needs_form =
                     (CENTER..=ALPHA).contains(&item.id) || item.id == SAVE || item.id == APPLY;
@@ -697,6 +967,7 @@ impl Ui {
                         }
                         Err(error) => {
                             self.set_text(OUTPUT, &format!("ERROR — {error}\n\nIf loading failed, fix the file/engine and Reload, or explicitly Reset form to defaults. Nothing was silently replaced."));
+                            self.show_page(5);
                             let _ = SetFocus(Some(self.control(OUTPUT)));
                             self.ensure_focus_visible();
                         }
@@ -759,6 +1030,11 @@ impl Ui {
                         "alpha" => ALPHA,
                         _ => OUTPUT,
                     };
+                    if let Some(page) = self.items.iter().find(|i| i.id == id).map(|i| i.page) {
+                        if page >= 0 {
+                            self.show_page(page);
+                        }
+                    }
                     let _ = SetFocus(Some(self.control(id)));
                     self.ensure_focus_visible();
                     // Parentless modal dialogs are avoided; keeping state
@@ -776,6 +1052,7 @@ impl Ui {
             RESET => self.start(Action::Reset),
             DIAGNOSE => self.start(Action::Diagnostics),
             ABOUT => {
+                self.show_page(5);
                 self.set_text(OUTPUT, UPSTREAM_LICENSE);
                 let _ = SetFocus(Some(self.control(OUTPUT)));
                 self.ensure_focus_visible();
@@ -784,6 +1061,155 @@ impl Ui {
                 let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
             }
             _ => {}
+        }
+    }
+
+    unsafe fn sync_style(&self) {
+        let selected = SendMessageW(self.control(STYLE), CB_GETCURSEL, None, None).0;
+        for i in 0..5 {
+            SendMessageW(
+                self.control(RADIO + i),
+                BM_SETCHECK,
+                Some(WPARAM(if selected == i as isize {
+                    BST_CHECKED.0 as usize
+                } else {
+                    0
+                })),
+                None,
+            );
+        }
+    }
+    unsafe fn sync_sliders(&self) {
+        for (i, id) in [RED, GREEN, BLUE, ALPHA].iter().enumerate() {
+            if let Ok(value) = self.text(*id).parse::<u8>() {
+                SendMessageW(
+                    self.control(SLIDER + i as u16),
+                    TBM_SETPOS,
+                    Some(WPARAM(1)),
+                    Some(LPARAM(value as isize)),
+                );
+            }
+        }
+    }
+    unsafe fn preview_tick(&mut self) {
+        if let Some(start) = self.preview {
+            let form = self.read_form();
+            let duration = form.animation_ms.parse::<u32>().unwrap_or(300);
+            let elapsed = start.elapsed().as_millis() as u64;
+            if let Ok(position) =
+                taskbarx_core::animated_position(0, 1000, elapsed, duration, &form.animation)
+            {
+                SendMessageW(
+                    self.control(PREVIEW_TRACK),
+                    TBM_SETPOS,
+                    Some(WPARAM(1)),
+                    Some(LPARAM(position.clamp(0, 1000) as isize)),
+                );
+            }
+            if elapsed >= u64::from(duration) || form.animation == "none" {
+                self.preview = None;
+            }
+        }
+    }
+    unsafe fn draw_text(&self, dc: HDC, text: &str, mut rect: RECT, size: i32, color: COLORREF) {
+        let font = CreateFontW(
+            -px(size, self.dpi),
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            DEFAULT_CHARSET,
+            OUT_DEFAULT_PRECIS,
+            CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY,
+            0,
+            if ICONS.contains(&text) {
+                w!("Segoe MDL2 Assets")
+            } else {
+                w!("Segoe UI")
+            },
+        );
+        let old = SelectObject(dc, font.into());
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, color);
+        let mut text: Vec<u16> = text.encode_utf16().collect();
+        DrawTextW(
+            dc,
+            &mut text,
+            &mut rect,
+            DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_END_ELLIPSIS,
+        );
+        SelectObject(dc, old);
+        let _ = DeleteObject(font.into());
+    }
+    unsafe fn draw_chrome(&self, draw: &DRAWITEMSTRUCT) {
+        let id = draw.CtlID as u16;
+        let r = draw.rcItem;
+        if id == TITLE {
+            FillRect(draw.hDC, &r, HBRUSH(GetStockObject(WHITE_BRUSH).0));
+            self.draw_text(
+                draw.hDC,
+                PAGES[self.page as usize],
+                r,
+                24,
+                COLORREF(0x202020),
+            );
+            return;
+        }
+        let index = (id - NAV) as usize;
+        let selected = index == self.page as usize;
+        let brush = CreateSolidBrush(COLORREF(if selected { 0x00eee7de } else { 0x00f3f3f3 }));
+        FillRect(draw.hDC, &r, brush);
+        let _ = DeleteObject(brush.into());
+        if selected {
+            let accent = CreateSolidBrush(COLORREF(0x00d77800));
+            FillRect(
+                draw.hDC,
+                &RECT {
+                    left: r.left,
+                    top: r.top + px(10, self.dpi),
+                    right: r.left + px(3, self.dpi),
+                    bottom: r.bottom - px(10, self.dpi),
+                },
+                accent,
+            );
+            let _ = DeleteObject(accent.into());
+        }
+        self.draw_text(
+            draw.hDC,
+            ICONS[index],
+            RECT {
+                left: r.left + px(14, self.dpi),
+                right: r.left + px(45, self.dpi),
+                ..r
+            },
+            20,
+            COLORREF(0x303030),
+        );
+        self.draw_text(
+            draw.hDC,
+            PAGES[index],
+            RECT {
+                left: r.left + px(56, self.dpi),
+                right: r.right - px(6, self.dpi),
+                ..r
+            },
+            14,
+            COLORREF(0x202020),
+        );
+        if draw.itemState.0 & ODS_FOCUS.0 != 0 {
+            let _ = DrawFocusRect(
+                draw.hDC,
+                &RECT {
+                    left: r.left + 4,
+                    top: r.top + 3,
+                    right: r.right - 4,
+                    bottom: r.bottom - 3,
+                },
+            );
         }
     }
 
@@ -852,7 +1278,24 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                 WM_COMMAND => {
                     let id = (wp.0 & 0xffff) as u16;
                     let notification = ((wp.0 >> 16) & 0xffff) as u32;
-                    if (SAVE..=CLOSE).contains(&id) && notification == BN_CLICKED {
+                    if (NAV..NAV + 9).contains(&id) && notification == BN_CLICKED {
+                        ui.show_page(i32::from(id - NAV));
+                    } else if (RADIO..RADIO + 5).contains(&id) && notification == BN_CLICKED {
+                        SendMessageW(
+                            ui.control(STYLE),
+                            CB_SETCURSEL,
+                            Some(WPARAM((id - RADIO) as usize)),
+                            None,
+                        );
+                        ui.sync_style();
+                        ui.set_text(
+                            OUTPUT,
+                            "Style selected locally. Click Apply to update the taskbar.",
+                        );
+                    } else if id == PREVIEW && notification == BN_CLICKED {
+                        ui.preview = Some(Instant::now());
+                        ui.preview_tick();
+                    } else if (SAVE..=CLOSE).contains(&id) && notification == BN_CLICKED {
                         ui.action(id);
                     } else if id == IDCANCEL.0 as u16 {
                         let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
@@ -863,16 +1306,34 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                             || notification == BN_CLICKED)
                     {
                         ui.set_text(OUTPUT, "Form edited locally. Save settings only persists; Apply/start explicitly changes the runtime.");
+                        ui.sync_sliders();
                         let _ = InvalidateRect(Some(ui.control(SWATCH)), None, true);
                     }
                     return LRESULT(0);
                 }
                 WM_TIMER => {
                     ui.drain();
+                    ui.preview_tick();
                     return LRESULT(0);
                 }
                 WM_SIZE => {
                     ui.layout();
+                    return LRESULT(0);
+                }
+                WM_HSCROLL if lp.0 != 0 => {
+                    let id = GetDlgCtrlID(HWND(lp.0 as *mut _)) as u16;
+                    if (SLIDER..SLIDER + 4).contains(&id) {
+                        let value = SendMessageW(HWND(lp.0 as *mut _), TBM_GETPOS, None, None).0;
+                        ui.set_text(
+                            [RED, GREEN, BLUE, ALPHA][(id - SLIDER) as usize],
+                            &value.to_string(),
+                        );
+                        ui.set_text(
+                            OUTPUT,
+                            "Color edited locally. Click Apply to update the taskbar.",
+                        );
+                        let _ = InvalidateRect(Some(ui.control(SWATCH)), None, true);
+                    }
                     return LRESULT(0);
                 }
                 WM_VSCROLL | WM_HSCROLL => {
@@ -902,6 +1363,44 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                     );
                     ui.layout();
                     return LRESULT(0);
+                }
+                WM_ERASEBKGND => {
+                    let dc = HDC(wp.0 as *mut _);
+                    let mut r = RECT::default();
+                    let _ = GetClientRect(hwnd, &mut r);
+                    FillRect(dc, &r, HBRUSH(GetStockObject(WHITE_BRUSH).0));
+                    let brush = CreateSolidBrush(COLORREF(0xf3f3f3));
+                    FillRect(
+                        dc,
+                        &RECT {
+                            right: px(178, ui.dpi) - ui.scroll_x,
+                            ..r
+                        },
+                        brush,
+                    );
+                    let _ = DeleteObject(brush.into());
+                    return LRESULT(1);
+                }
+                WM_CTLCOLORSTATIC | WM_CTLCOLORBTN => {
+                    let dc = HDC(wp.0 as *mut _);
+                    SetBkMode(dc, TRANSPARENT);
+                    SetTextColor(dc, COLORREF(0x303030));
+                    if ui
+                        .items
+                        .iter()
+                        .any(|i| i.hwnd == HWND(lp.0 as *mut _) && i.x < 178)
+                    {
+                        SetDCBrushColor(dc, COLORREF(0xf3f3f3));
+                        return LRESULT(GetStockObject(DC_BRUSH).0 as isize);
+                    }
+                    return LRESULT(GetStockObject(WHITE_BRUSH).0 as isize);
+                }
+                WM_DRAWITEM
+                    if wp.0 == TITLE as usize
+                        || (NAV as usize..NAV as usize + 9).contains(&wp.0) =>
+                {
+                    ui.draw_chrome(&*(lp.0 as *const DRAWITEMSTRUCT));
+                    return LRESULT(1);
                 }
                 WM_DRAWITEM if wp.0 == SWATCH as usize => {
                     ui.swatch(&*(lp.0 as *const DRAWITEMSTRUCT));
@@ -979,6 +1478,9 @@ unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Re
         .map_err(|e| format!("Cannot create engine-command worker: {e}"))?;
     let state = Box::new(RefCell::new(Ui {
         hwnd: HWND::default(),
+        page: 0,
+        building_page: -1,
+        preview: None,
         items: Vec::new(),
         dpi: GetDpiForSystem().max(96),
         font: HFONT::default(),
@@ -1000,15 +1502,23 @@ unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Re
     )
     .map_err(winerr)?;
     let dpi = state.borrow().dpi;
+    let style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+    let mut outer = RECT {
+        left: 0,
+        top: 0,
+        right: px(CONTENT_W, dpi),
+        bottom: px(CONTENT_H, dpi),
+    };
+    AdjustWindowRectExForDpi(&mut outer, style, false, WS_EX_CONTROLPARENT, dpi).map_err(winerr)?;
     let hwnd = CreateWindowExW(
         WS_EX_CONTROLPARENT,
         class,
         w!("TaskbarX Configurator"),
-        WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_VSCROLL | WS_HSCROLL,
+        style,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        px(840, dpi).min(work.right - work.left),
-        px(900, dpi).min(work.bottom - work.top),
+        (outer.right - outer.left).min(work.right - work.left),
+        (outer.bottom - outer.top).min(work.bottom - work.top),
         None,
         None,
         Some(instance),
@@ -1020,7 +1530,7 @@ unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Re
         ui.hwnd = hwnd;
         ui.dpi = GetDpiForWindow(hwnd).max(96);
         ui.build(&options)?;
-        if SetTimer(Some(hwnd), 1, 100, None) == 0 {
+        if SetTimer(Some(hwnd), 1, 16, None) == 0 {
             return Err("Cannot create UI completion timer".into());
         }
         ui.start(Action::Initialize);
@@ -1032,7 +1542,7 @@ unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Re
     }
     let _ = ShowWindow(hwnd, SW_SHOW);
     let _ = UpdateWindow(hwnd);
-    let _ = SetFocus(Some(state.borrow().control(401)));
+    let _ = SetFocus(Some(state.borrow().control(NAV)));
     let mut msg = MSG::default();
     let mut loop_error = None;
     let mut previous_focus = GetFocus();
@@ -1105,6 +1615,9 @@ mod tests {
             let (_events, rx) = mpsc::channel();
             let state = Box::new(RefCell::new(Ui {
                 hwnd: HWND::default(),
+                page: 0,
+                building_page: -1,
+                preview: None,
                 items: vec![],
                 dpi: 96,
                 font: HFONT::default(),
@@ -1140,6 +1653,17 @@ mod tests {
                     config: None,
                 };
                 ui.build(&options).unwrap();
+                // Check every page, including hidden controls, for encoding damage.
+                for item in &ui.items {
+                    let mut text = vec![0u16; GetWindowTextLengthW(item.hwnd) as usize + 1];
+                    let len = GetWindowTextW(item.hwnd, &mut text);
+                    let text = String::from_utf16_lossy(&text[..len as usize]);
+                    assert!(
+                        !text.contains('?') && !text.contains('\u{fffd}'),
+                        "corrupted UI text: {text}"
+                    );
+                }
+
                 assert!(ui.read_form().settings().is_err());
                 for animation in ANIMATIONS {
                     for style in STYLES {
@@ -1162,45 +1686,33 @@ mod tests {
                     ui.layout();
                     let mut rect = RECT::default();
                     GetWindowRect(ui.control(RED), &mut rect).unwrap();
-                    assert_eq!(rect.right - rect.left, px(100, dpi));
+                    assert_eq!(rect.right - rect.left, px(70, dpi));
                 }
-                let order = [
-                    401,
-                    402,
-                    CENTER,
-                    PRIMARY,
-                    SECONDARY,
-                    BETWEEN,
-                    PRIMARY_OFFSET,
-                    SECONDARY_OFFSET,
-                    ANIMATION,
-                    DURATION,
-                    POLL,
-                    STYLE,
-                    RED,
-                    GREEN,
-                    BLUE,
-                    ALPHA,
-                    SAVE,
-                    APPLY,
-                    STOP,
-                    RELOAD,
-                    RESET,
-                    DIAGNOSE,
-                    ABOUT,
-                    CLOSE,
-                    OUTPUT,
-                ];
-                for pair in order.windows(2) {
-                    assert_eq!(
-                        GetNextDlgTabItem(hwnd, Some(ui.control(pair[0])), false).unwrap(),
-                        ui.control(pair[1])
-                    );
-                    assert_eq!(
-                        GetNextDlgTabItem(hwnd, Some(ui.control(pair[1])), true).unwrap(),
-                        ui.control(pair[0])
-                    );
+                for page in 0..9 {
+                    ui.show_page(page);
+                    assert_eq!(ui.text(TITLE), PAGES[page as usize]);
+                    for item in &ui.items {
+                        let visible =
+                            GetWindowLongW(item.hwnd, GWL_STYLE) as u32 & WS_VISIBLE.0 != 0;
+                        assert_eq!(
+                            visible,
+                            item.page == -1 || item.page == page,
+                            "page {page}, control {}",
+                            item.id
+                        );
+                    }
+                    // Switching tabs is entirely local, never issues a command.
+                    assert!(requests.try_recv().is_err());
                 }
+                ui.show_page(0);
+                ui.sync_sliders();
+                assert_eq!(
+                    SendMessageW(ui.control(SLIDER), TBM_GETPOS, None, None).0,
+                    255
+                );
+                ui.preview = Some(Instant::now());
+                ui.preview_tick();
+                assert!(requests.try_recv().is_err());
                 // The native Save button submits only Save; core contract tests
                 // then verify that this emits only config import --stdin.
                 ui.action(SAVE);
