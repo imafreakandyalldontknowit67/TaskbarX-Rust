@@ -29,7 +29,8 @@ That file is an **inventory, not a license-compliance certification**. Declared 
 
 A local validation ZIP is not a claim that redistribution obligations have been fully reviewed or permission to publish. The scripts do not sign, upload or publish.
 
-## Private preview artwork and dependency notices
+## Artwork and dependency notices
 
-See [artwork provenance](docs/assets/README.md) for the upstream banner, its edited Rust-badge variant, and the CC-BY-4.0 Rust logo reference, and [dependency license texts](docs/licenses/README.md) for the locked Rust dependencies. The banner depicts upstream, not this build; review its separate artwork rights before making the repository public. Optional upstream .ico downloads are linked rather than bundled.
+The repository banner is an original AI-generated conceptual illustration, not upstream artwork or a screenshot. See [artwork provenance](docs/assets/README.md). The official Rust logo and upstream wallpaper collage are not included. Optional upstream icon downloads are linked rather than bundled.
 
+[Dependency license texts](docs/licenses/README.md) accompany the locked Rust dependencies. Portable packages include the applicable notices under `docs/licenses/`.

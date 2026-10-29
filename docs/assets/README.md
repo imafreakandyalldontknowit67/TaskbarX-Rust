@@ -1,7 +1,7 @@
-# Artwork provenance
+﻿# Banner artwork
 
-- `taskbarx-banner.png`: unmodified banner from the original [TaskbarX README](https://github.com/ChrisAnd1998/TaskbarX), by Chris Andriessen / the TaskbarX project. [Original image](https://user-images.githubusercontent.com/50437199/90984468-6c5a1a00-e575-11ea-9af0-a874115e07e7.png). It depicts upstream TaskbarX, not screenshots of this Rust build. The upstream source repository is MIT-licensed; separate rights to the wallpapers/artwork have not been established. Retained for the requested private preview; review or replace before public distribution.
-- `rust-logo.svg`: unmodified `rust-logo-white-outline.svg` from [rust-lang/rust-artwork](https://github.com/rust-lang/rust-artwork/tree/main/logo). Copyright the Rust project contributors. Licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). No changes to this reference SVG; no longer displayed separately beside the banner. Rust is a trademark of the Rust Foundation. This independent project is not endorsed by the Rust project or Foundation.
+`taskbarx-rust-original.png` is an original AI-generated conceptual illustration created for this project using the built-in image-generation tool. It uses abstract landscapes, centered geometric taskbar motifs, and a text Rust badge. It is not a screenshot of the application and does not reuse upstream wallpapers or the official Rust logo.
 
-Optional upstream Start icons are linked, not redistributed. No upstream EXEs, signing keys or Store assets are included.
-- `taskbarx-rust-banner.png`: edited version of the upstream banner, generated with the built-in image editor at the user's request. Modification: a small Rust-style notification badge overlaps the existing TaskbarX emblem inside the banner. The collage is upstream-derived artwork, not a live screenshot of the Rust application. Original attribution and the private-preview/public-rights-review caveat above still apply.
+Prompt summary: an original dark blue/cyan desktop-inspired collage with abstract landscapes, centered geometric taskbar strips, a TaskbarX wordmark, and an integrated orange RUST badge; no copied artwork, real screenshots, personal information, or official platform logos.
+
+The illustration does not imply endorsement by the original TaskbarX project, Microsoft, or the Rust project.
