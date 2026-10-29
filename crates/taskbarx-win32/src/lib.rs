@@ -10,8 +10,8 @@
 //! Accent APIs are undocumented and dynamically resolved. If the original accent
 //! cannot be queried, restoration disables our accent and sends WM_THEMECHANGED
 //! once, with a 200 ms timeout. This requests Windows-managed appearance, **not**
-//! exact restoration of unqueryable third-party styling. `restore` reports that
-//! limitation as a diagnostic. Callers should call `restore` explicitly to inspect
+//! exact restoration of unqueryable third-party styling. Restoration logs that
+//! limitation as a non-fatal warning. Callers should call `restore` explicitly to inspect
 //! failures; Drop can only attempt best-effort cleanup.
 //! No Win32 operation can atomically validate and pin a foreign HWND; identities
 //! are revalidated immediately before each mutation to minimize shell races.
@@ -160,7 +160,7 @@ impl Session {
 
     /// Restores independent changes even if one fails. Successfully restored
     /// entries are removed; failed entries can be retried. Repeated success is a
-    /// no-op. Diagnostics also explain any Windows-managed styling fallback.
+    /// no-op. Fallback warnings go to stderr, not the returned failure list.
     pub fn restore(&mut self) -> Vec<String> {
         #[cfg(windows)]
         {

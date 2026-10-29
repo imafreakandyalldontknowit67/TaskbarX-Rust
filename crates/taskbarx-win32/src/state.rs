@@ -41,6 +41,12 @@ pub(crate) trait Api {
     fn discover(&mut self) -> Result<Discovery, String>;
     fn validate(&mut self, id: &TaskbarId) -> Result<(), String>;
     // True only for positively identified destruction/replacement, not query errors.
+    fn validate_root(&mut self, id: &TaskbarId) -> Result<(), String> {
+        self.validate(id)
+    }
+    fn root_obsolete(&mut self, _id: &TaskbarId) -> bool {
+        false
+    }
     fn obsolete(&mut self, _id: &TaskbarId) -> bool {
         false
     }
@@ -143,16 +149,19 @@ impl<A: Api> Controller<A> {
             return self.restore_style(id);
         };
         self.require_known(id)?;
-        if self.changes.iter().any(|(other, c)| {
+        // Accent ownership follows the root, not a replaceable task-list child.
+        let previous = self.changes.keys().copied().find(|other| {
             other.root == id.root
                 && other.process_id == id.process_id
                 && other.process_started == id.process_started
                 && other != id
-                && c.accent.is_some()
-        }) {
-            return Err(
-                "This root was styled under a different topology; refusing to rebaseline".into(),
-            );
+                && self.changes[other].accent.is_some()
+        });
+        if let Some(previous) = previous {
+            self.api.validate_root(&previous)?;
+            let original = self.changes.get_mut(&previous).unwrap().accent.take();
+            self.changes.entry(*id).or_default().accent = original;
+            self.prune(&previous);
         }
         let original = match self.changes.get(id).and_then(|c| c.accent) {
             Some(a) => a,
@@ -170,7 +179,7 @@ impl<A: Api> Controller<A> {
         let Some(original) = self.changes.get(id).and_then(|c| c.accent) else {
             return Ok(());
         };
-        self.api.validate(id)?;
+        self.api.validate_root(id)?;
         if let Some(warning) = self.api.restore_accent(id, original)? {
             self.diagnostics.push(warning);
         }
@@ -192,8 +201,11 @@ impl<A: Api> Controller<A> {
         let mut errors = Vec::new();
         for id in ids {
             if self.api.obsolete(&id) {
-                self.changes.remove(&id);
-                continue;
+                self.changes.get_mut(&id).unwrap().position = None;
+                if self.api.root_obsolete(&id) {
+                    self.changes.get_mut(&id).unwrap().accent = None;
+                }
+                self.prune(&id);
             }
             if let Err(e) = self.restore_position(&id) {
                 errors.push(format!("Position restoration {id:?}: {e}"));
@@ -202,7 +214,11 @@ impl<A: Api> Controller<A> {
                 errors.push(format!("Style restoration {id:?}: {e}"));
             }
         }
-        errors.append(&mut self.diagnostics);
+        // Successful fallback diagnostics are warnings, not cleanup failures.
+        for message in self.diagnostics.drain(..) {
+            use std::io::Write;
+            let _ = writeln!(std::io::stderr().lock(), "taskbarx warning: {message}");
+        }
         errors
     }
 }

@@ -70,6 +70,9 @@ impl Backend for NativeBackend {
 /// pumps owner-thread COM messages and observes shutdown notifications.
 pub(crate) trait Control {
     fn now_ms(&self) -> u64;
+    fn complete(&mut self, _success: bool) -> Result<(), String> {
+        Ok(())
+    }
     fn stopped(&mut self) -> Result<bool, String>;
     fn wait(&mut self, milliseconds: u64) -> Result<(), String>;
 }
@@ -239,13 +242,13 @@ struct Animation {
     cross: i32,
     range: (i32, i32),
     started: u64,
-    moved: bool,
 }
 
 #[derive(Default)]
 struct State {
     animations: HashMap<TaskbarId, Animation>,
     styles: HashMap<TaskbarId, u64>,
+    moved: HashSet<TaskbarId>,
 }
 
 impl State {
@@ -295,10 +298,11 @@ impl State {
                 self.styles.insert(s.id, now);
             }
             let Some((axis, target, range)) = proposal(&s, settings) else {
-                if let Some(old) = self.animations.remove(&s.id) {
-                    if old.moved {
-                        backend.restore_position(&s.id)?;
-                    }
+                self.animations.remove(&s.id);
+                // Movement ownership survives transient discovery gaps.
+                if self.moved.contains(&s.id) {
+                    backend.restore_position(&s.id)?;
+                    self.moved.remove(&s.id);
                 }
                 continue;
             };
@@ -333,7 +337,6 @@ impl State {
                             cross,
                             range,
                             started: now,
-                            moved: false,
                         },
                     );
                 }
@@ -375,7 +378,7 @@ impl State {
                         y: a.cross,
                     }
                 };
-                a.moved = true; // An error may still mean a partial native mutation.
+                self.moved.insert(*id); // An error may still mean a partial native mutation.
                 backend.move_list(id, point)?;
                 a.displayed = next;
             }
@@ -383,8 +386,13 @@ impl State {
         Ok(())
     }
 
-    fn animating(&self) -> bool {
-        self.animations.values().any(|a| a.displayed != a.target)
+    fn animating(&self, now: u64, settings: &Settings) -> bool {
+        self.animations.values().any(|a| {
+            a.displayed != a.target
+                || (a.from != a.target
+                    && settings.animation != "none"
+                    && now.saturating_sub(a.started) < u64::from(settings.animation_ms))
+        })
     }
 }
 
@@ -482,10 +490,10 @@ fn run_loop(
         }
         // Reset only after a full discovery + animation cycle has succeeded;
         // idle frames must not mask a persistently failing discovery.
-        if !state.animating() {
+        if !state.animating(now, settings) {
             failures = 0;
         }
-        let deadline = if state.animating() {
+        let deadline = if state.animating(now, settings) {
             next_poll.min(next_frame)
         } else {
             next_poll

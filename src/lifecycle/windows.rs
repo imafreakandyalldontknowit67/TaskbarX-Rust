@@ -129,6 +129,28 @@ impl NamedCoordinator {
 impl Kernel for NamedCoordinator {
     type Mutex = KernelMutex;
     type Event = Handle;
+    type Completion = Handle;
+    fn create_completion(&self) -> Result<Handle, String> {
+        let name = self.name("restored");
+        let handle = unsafe { CreateEventW(None, true, false, PCWSTR(name.as_ptr())) }
+            .map(Handle)
+            .map_err(|e| error("creating restoration result", e))?;
+        self.reset_event(&handle)?;
+        Ok(handle)
+    }
+    fn open_completion(&self) -> Result<Handle, String> {
+        let name = self.name("restored");
+        unsafe { OpenEventW(SYNCHRONIZATION_SYNCHRONIZE, false, PCWSTR(name.as_ptr())) }
+            .map(Handle)
+            .map_err(|e| error("opening restoration result", e))
+    }
+    fn completion_ok(&self, event: &Handle) -> Result<bool, String> {
+        match unsafe { WaitForSingleObject(event.0, 0) } {
+            WAIT_OBJECT_0 => Ok(true),
+            WAIT_TIMEOUT => Ok(false),
+            _ => Err("cannot read restoration result".into()),
+        }
+    }
     fn now_ms(&self) -> u64 {
         self.started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
     }
@@ -201,6 +223,7 @@ impl Coordinator for NamedCoordinator {
         let notifications = Notifications::new()?;
         Ok(Some(Instance {
             stop: claim.stop,
+            completion: claim.completion,
             _notifications: notifications,
             _owned: claim.running,
             started: Instant::now(),
@@ -219,11 +242,19 @@ pub(super) struct Instance {
     _notifications: Notifications,
     _owned: KernelMutex,
     stop: Handle,
+    completion: Handle,
     started: Instant,
     // Prevent accidentally transferring mutex ownership/notification window.
     _owner_thread: PhantomData<Rc<()>>,
 }
 impl Control for Instance {
+    fn complete(&mut self, success: bool) -> Result<(), String> {
+        if success {
+            unsafe { SetEvent(self.completion.0) }
+                .map_err(|e| error("publishing restoration result", e))?;
+        }
+        Ok(())
+    }
     fn now_ms(&self) -> u64 {
         self.started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
     }

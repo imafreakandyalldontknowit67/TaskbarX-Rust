@@ -3,6 +3,10 @@
 pub(super) trait Kernel {
     type Mutex;
     type Event;
+    type Completion;
+    fn create_completion(&self) -> Result<Self::Completion, String>;
+    fn open_completion(&self) -> Result<Self::Completion, String>;
+    fn completion_ok(&self, completion: &Self::Completion) -> Result<bool, String>;
     fn now_ms(&self) -> u64;
     fn create_mutex(&self, key: &str) -> Result<Self::Mutex, String>;
     fn open_mutex(&self, key: &str) -> Result<Option<Self::Mutex>, String>;
@@ -19,6 +23,7 @@ pub(super) struct Claim<K: Kernel> {
     // runtime mutex must never be observable without a live stop event.
     pub running: K::Mutex,
     pub stop: K::Event,
+    pub completion: K::Completion,
 }
 
 fn gate<K: Kernel>(kernel: &K, timeout: u32) -> Result<K::Mutex, String> {
@@ -39,7 +44,12 @@ pub(super) fn claim<K: Kernel>(kernel: &K) -> Result<Option<Claim<K>>, String> {
     // Clearing a stale signal is legal ONLY after owning the runtime mutex and
     // while the gate excludes stoppers. A duplicate returns above without reset.
     kernel.reset_event(&stop)?;
-    Ok(Some(Claim { stop, running }))
+    let completion = kernel.create_completion()?;
+    Ok(Some(Claim {
+        stop,
+        running,
+        completion,
+    }))
 }
 
 pub(super) fn stop<K: Kernel>(kernel: &K, timeout: u32) -> Result<(), String> {
@@ -60,17 +70,21 @@ pub(super) fn stop<K: Kernel>(kernel: &K, timeout: u32) -> Result<(), String> {
         Err(error) => {
             // The owner may have exited between the probe and opening the event.
             if kernel.acquire(&mut running, 0)? {
-                return Ok(());
+                return Err("runtime exited before restoration could be confirmed".into());
             }
             return Err(error);
         }
     };
+    let completion = kernel.open_completion()?;
     kernel.signal_event(&event)?;
     if !kernel.acquire(&mut running, remaining())? {
         return Err(
             "timed out waiting for runtime restoration/exit; the stop request remains pending"
                 .into(),
         );
+    }
+    if !kernel.completion_ok(&completion)? {
+        return Err("runtime exited without confirming successful restoration (cleanup failed or process terminated)".into());
     }
     Ok(())
 }
@@ -86,6 +100,7 @@ mod tests {
         missing_event: bool,
         signaled: bool,
         busy_gate: bool,
+        cleanup_failed: bool,
         // First acquisition is always the gate; later responses model runtime ownership.
         running_waits: VecDeque<bool>,
         now: u64,
@@ -116,6 +131,16 @@ mod tests {
     impl Kernel for Fake {
         type Mutex = Mutex;
         type Event = Event;
+        type Completion = ();
+        fn create_completion(&self) -> Result<(), String> {
+            Ok(())
+        }
+        fn open_completion(&self) -> Result<(), String> {
+            Ok(())
+        }
+        fn completion_ok(&self, _: &()) -> Result<bool, String> {
+            Ok(!self.0.borrow().cleanup_failed)
+        }
         fn now_ms(&self) -> u64 {
             self.0.borrow().now
         }
@@ -265,11 +290,11 @@ mod tests {
         assert_eq!(f.0.borrow().events.last().unwrap(), "release:gate");
     }
     #[test]
-    fn owner_exiting_before_event_open_is_a_successful_stop() {
+    fn owner_exiting_before_event_open_is_unconfirmed() {
         let f = fake([false, true]);
         f.0.borrow_mut().existing = true;
         f.0.borrow_mut().missing_event = true;
-        stop(&f, 100).unwrap();
+        assert!(stop(&f, 100).is_err());
         assert!(!f.0.borrow().signaled);
     }
 
@@ -279,5 +304,12 @@ mod tests {
         f.0.borrow_mut().busy_gate = true;
         assert!(stop(&f, 100).unwrap_err().contains("timed out"));
         assert_eq!(f.0.borrow().events, ["create:gate", "wait:gate:100"]);
+    }
+    #[test]
+    fn cleanup_failure_or_crash_is_not_reported_as_successful_stop() {
+        let f = fake([false, true]);
+        f.0.borrow_mut().existing = true;
+        f.0.borrow_mut().cleanup_failed = true;
+        assert!(stop(&f, 100).unwrap_err().contains("without confirming"));
     }
 }

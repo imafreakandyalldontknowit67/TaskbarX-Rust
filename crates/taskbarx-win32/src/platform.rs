@@ -603,6 +603,26 @@ fn measure(
 }
 
 impl Api for Windows {
+    fn validate_root(&mut self, id: &TaskbarId) -> Result<(), String> {
+        let root = hwnd(id.root);
+        if !unsafe { IsWindow(Some(root)) }.as_bool()
+            || !matches!(
+                class(root)?.as_str(),
+                "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
+            )
+            || pid(root)? != id.process_id
+            || process_started(id.process_id)? != id.process_started
+        {
+            return Err("Taskbar root identity changed".into());
+        }
+        Ok(())
+    }
+    fn root_obsolete(&mut self, id: &TaskbarId) -> bool {
+        !unsafe { IsWindow(Some(hwnd(id.root))) }.as_bool()
+            || pid(hwnd(id.root)).is_ok_and(|p| p != id.process_id)
+            || process_started(id.process_id).is_ok_and(|t| t != id.process_started)
+    }
+
     fn obsolete(&mut self, id: &TaskbarId) -> bool {
         if [id.root, id.task_list, id.parent]
             .iter()
@@ -739,7 +759,7 @@ impl Api for Windows {
             .composition
             .set
             .ok_or("SetWindowCompositionAttribute is unavailable")?;
-        validate(id, self.build)?;
+        self.validate_root(id)?;
         if Composition::call(set, hwnd(id.root), &mut a) {
             Ok(())
         } else {
@@ -756,7 +776,7 @@ impl Api for Windows {
             return Ok(None);
         }
         self.apply_accent(id, Accent::default())?;
-        validate(id, self.build)?;
+        self.validate_root(id)?;
         // No global broadcasts, registry changes, fabricated colorization values
         // or unbounded SendMessage. One bounded theme notification to this root.
         let result = unsafe {

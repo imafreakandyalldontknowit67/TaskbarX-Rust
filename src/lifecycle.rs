@@ -24,7 +24,9 @@ fn start<C: Coordinator, B: Backend>(
             .to_owned()
     })?;
     let backend = factory()?;
-    runtime::drive(backend, &mut lease, settings)
+    let result = runtime::drive(backend, &mut lease, settings);
+    lease.complete(result.is_ok())?;
+    result
 }
 
 pub(crate) fn run(settings: &Settings) -> Result<(), String> {

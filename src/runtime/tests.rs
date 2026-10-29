@@ -623,3 +623,56 @@ fn restoration_runs_during_unwind() {
     assert!(result.is_err());
     assert_eq!(backend.0.borrow().events.last().unwrap(), "restore-all");
 }
+
+#[test]
+fn unsafe_measurements_restore_even_after_a_discovery_gap() {
+    let mut state = State::default();
+    let mut backend = Fake::default();
+    let settings = settings();
+    state
+        .refresh(
+            &mut backend,
+            discovery(vec![snapshot(1, true, 0)]),
+            &settings,
+            0,
+        )
+        .unwrap();
+    state.frame(&mut backend, &settings, 50).unwrap();
+    state
+        .refresh(&mut backend, discovery(vec![]), &settings, 60)
+        .unwrap();
+    let mut returned = snapshot(1, true, 100);
+    returned.content_rect = None;
+    state
+        .refresh(&mut backend, discovery(vec![returned]), &settings, 70)
+        .unwrap();
+    assert!(backend
+        .0
+        .borrow()
+        .events
+        .contains(&"restore-position:1".into()));
+}
+#[test]
+fn bounce_peak_does_not_end_animation_before_duration() {
+    let mut state = State::default();
+    let mut backend = Fake::default();
+    let mut settings = settings();
+    settings.animation = "bounceeaseout".into();
+    settings.animation_ms = 352;
+    settings.poll_ms = 10000;
+    state
+        .refresh(
+            &mut backend,
+            discovery(vec![snapshot(1, true, 0)]),
+            &settings,
+            0,
+        )
+        .unwrap();
+    state.frame(&mut backend, &settings, 128).unwrap();
+    assert!(state.animating(128, &settings));
+    let peak = backend.0.borrow().moves.last().unwrap().1;
+    state.frame(&mut backend, &settings, 144).unwrap();
+    assert!(backend.0.borrow().moves.last().unwrap().1 < peak);
+    state.frame(&mut backend, &settings, 352).unwrap();
+    assert!(!state.animating(352, &settings));
+}

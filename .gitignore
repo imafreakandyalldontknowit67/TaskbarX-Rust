@@ -8,3 +8,4 @@ tasks*.json
 /crates/**/Cargo.lock
 dist/
 
+app/

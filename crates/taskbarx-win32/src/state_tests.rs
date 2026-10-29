@@ -99,6 +99,20 @@ impl Fake {
     }
 }
 impl Api for Fake {
+    fn validate_root(&mut self, id: &TaskbarId) -> Result<(), String> {
+        if !self.invalid_classes
+            && self.live.iter().any(|i| {
+                i.root == id.root
+                    && i.process_id == id.process_id
+                    && i.process_started == id.process_started
+            })
+        {
+            Ok(())
+        } else {
+            Err("stale root".into())
+        }
+    }
+
     fn discover(&mut self) -> Result<Discovery, String> {
         Ok(Discovery {
             build_number: 19045,
@@ -145,7 +159,7 @@ impl Api for Fake {
         Ok(self.queryable.then_some(self.styles[id]))
     }
     fn apply_accent(&mut self, id: &TaskbarId, a: Accent) -> Result<(), String> {
-        self.validate(id)?;
+        self.validate_root(id)?;
         if self.fail_style.contains(id) {
             return Err("style failed".into());
         }
@@ -314,8 +328,10 @@ fn fallback_reports_limitation_and_retries_partial_theme_failure() {
     assert!(!c.changes.is_empty());
     c.api.fail_refresh = false;
     let report = c.restore();
-    assert_eq!(report.len(), 1);
-    assert!(report[0].contains("third-party"));
+    assert!(
+        report.is_empty(),
+        "successful fallback is not a restoration error"
+    );
     assert!(c.changes.is_empty());
     assert!(c.restore().is_empty());
 }
@@ -336,11 +352,13 @@ fn stale_identity_pid_creation_parent_and_handles_never_restore() {
         c.api.live.remove(&id(1));
         c.api.live.insert(replacement);
         let n = c.api.log.borrow().len();
-        assert_eq!(c.restore().len(), 2);
-        assert_eq!(c.api.log.borrow().len(), n);
+        let errors = c.restore();
+        let root_survives = field == 2 || field == 3;
+        assert_eq!(errors.len(), if root_survives { 1 } else { 2 });
+        assert_eq!(c.api.log.borrow().len(), n + usize::from(root_survives));
         let log = c.api.log.clone();
         drop(c);
-        assert_eq!(log.borrow().len(), n);
+        assert_eq!(log.borrow().len(), n + usize::from(root_survives));
     }
 }
 #[test]
@@ -415,8 +433,12 @@ fn changed_task_list_in_same_root_does_not_rebaseline_applied_style() {
     c.api.snapshots.insert(new_id, snapshot(new_id));
     c.discover().unwrap();
     let n = c.api.log.borrow().len();
-    assert!(c.set_style(&new_id, Style::Opaque, [0; 4]).is_err());
-    assert_eq!(c.api.log.borrow().len(), n);
+    let original = c.changes[&id(1)].accent.unwrap().unwrap();
+    c.api.live.remove(&id(1));
+    c.set_style(&new_id, Style::Opaque, [0; 4]).unwrap();
+    assert_eq!(c.api.log.borrow().len(), n + 1); // no second query/rebaseline
+    assert!(c.restore().is_empty());
+    assert_eq!(c.api.styles[&new_id], original);
 }
 
 #[test]
@@ -425,6 +447,9 @@ fn positively_obsolete_journal_entries_do_not_block_explorer_recovery() {
     impl Api for Gone {
         fn obsolete(&mut self, id: &TaskbarId) -> bool {
             !self.0.live.contains(id)
+        }
+        fn root_obsolete(&mut self, id: &TaskbarId) -> bool {
+            self.0.validate_root(id).is_err()
         }
         fn discover(&mut self) -> Result<Discovery, String> {
             self.0.discover()
@@ -468,4 +493,19 @@ fn positively_obsolete_journal_entries_do_not_block_explorer_recovery() {
     c.discover().unwrap();
     c.move_task_list(&id(1), Point { x: 200, y: 3 }).unwrap();
     assert!(c.restore().is_empty());
+}
+
+#[test]
+fn surviving_root_restores_even_without_reapplying_to_recreated_child() {
+    let mut c = session();
+    let old = id(1);
+    let original = c.api.styles[&old];
+    c.set_style(&old, Style::Blur, [0; 4]).unwrap();
+    c.api.live.remove(&old);
+    let mut replacement = old;
+    replacement.task_list += 100;
+    c.api.live.insert(replacement);
+    assert!(c.restore().is_empty());
+    assert_eq!(c.api.styles[&old], original);
+    assert!(c.changes.is_empty());
 }
