@@ -24,6 +24,25 @@ fn full_settings() -> Settings {
         poll_ms: 250,
         style: "acrylic".into(),
         color: [12, 34, 56, 255],
+        primary_opacity: Some(0),
+        secondary_opacity: Some(100),
+        corner_radius: 789,
+        taskbar_segments: true,
+        default_style_on_maximized: true,
+        battery_animation: Some("bounceeaseoutin".into()),
+        battery_poll_ms: Some(876),
+        skip_resolutions: vec![1920, 2560, 3840],
+        pause_on_fullscreen: true,
+        hide_primary_start: true,
+        hide_secondary_start: true,
+        hide_primary_tray: true,
+        hide_secondary_tray: true,
+        revert_on_tray_overlap: true,
+        toolbar_compensation: false,
+        tray_icon: true,
+        startup_delay_secs: 86_400,
+        measurement: "uia".into(),
+        show_console: true,
     }
 }
 
@@ -41,7 +60,14 @@ fn fixed_defaults_and_json_keys() {
         "animation_ms": 300,
         "poll_ms": 400,
         "style": "default",
-        "color": [0, 0, 0, 128]
+        "color": [0, 0, 0, 128],
+        "primary_opacity": null, "secondary_opacity": null, "corner_radius": 0,
+        "taskbar_segments": false, "default_style_on_maximized": false,
+        "battery_animation": null, "battery_poll_ms": null, "skip_resolutions": [],
+        "pause_on_fullscreen": false, "hide_primary_start": false, "hide_secondary_start": false,
+        "hide_primary_tray": false, "hide_secondary_tray": false, "revert_on_tray_overlap": false,
+        "toolbar_compensation": true, "tray_icon": false, "startup_delay_secs": 6,
+        "measurement": "msaa", "show_console": false
     });
     let defaults = Settings::default();
     assert_eq!(serde_json::to_value(&defaults).unwrap(), expected);
@@ -95,7 +121,14 @@ fn every_supported_easing_and_style_is_exact_and_round_trips() {
     );
     assert_eq!(
         SUPPORTED_STYLES,
-        ["default", "transparent", "blur", "acrylic", "opaque"]
+        [
+            "default",
+            "transparent",
+            "blur",
+            "acrylic",
+            "opaque",
+            "transparent-gradient"
+        ]
     );
     for animation in EASING_NAMES {
         for style in SUPPORTED_STYLES {
@@ -183,6 +216,52 @@ fn invalid_settings() -> Vec<Settings> {
     for style in ["", "Transparent", "gradient", "default ", "5"] {
         values.push(Settings {
             style: style.into(),
+            ..Settings::default()
+        });
+    }
+    for value in [101, 255] {
+        values.push(Settings {
+            primary_opacity: Some(value),
+            ..Settings::default()
+        });
+        values.push(Settings {
+            secondary_opacity: Some(value),
+            ..Settings::default()
+        });
+    }
+    for value in [10_001, u32::MAX] {
+        values.push(Settings {
+            corner_radius: value,
+            ..Settings::default()
+        });
+    }
+    for value in [0, 49, 10_001, u32::MAX] {
+        values.push(Settings {
+            battery_poll_ms: Some(value),
+            ..Settings::default()
+        });
+    }
+    for value in [86_401, u32::MAX] {
+        values.push(Settings {
+            startup_delay_secs: value,
+            ..Settings::default()
+        });
+    }
+    for value in ["", "UIA", "other"] {
+        values.push(Settings {
+            measurement: value.into(),
+            ..Settings::default()
+        });
+    }
+    for value in ["", "None", "CubicEaseInOut"] {
+        values.push(Settings {
+            battery_animation: Some(value.into()),
+            ..Settings::default()
+        });
+    }
+    for value in [vec![0], vec![65536], vec![u32::MAX], vec![1, 2, 3, 4]] {
+        values.push(Settings {
+            skip_resolutions: value,
             ..Settings::default()
         });
     }
@@ -299,7 +378,7 @@ fn size_limit_is_bytes_accepts_exactly_64_kib_and_bounds_file_reads() {
     fs::write(&path, &oversized).unwrap();
     assert!(load(&path).unwrap_err().contains("64 KiB"));
     assert_eq!(fs::read_to_string(&path).unwrap(), oversized);
-    let unicode = format!("{{\"animation\":\"{}\"}}", "é".repeat(32768));
+    let unicode = format!("{{\"animation\":\"{}\"}}", "\u{e9}".repeat(32768));
     assert!(unicode.chars().count() < 65536);
     assert!(from_json(&unicode).unwrap_err().contains("64 KiB"));
     fs::write(&path, vec![b' '; 1024 * 1024]).unwrap();
@@ -339,7 +418,7 @@ fn save_creates_parents_replaces_existing_settings_and_leaves_no_temp_files() {
         .path()
         .join("new")
         .join("nested")
-        .join("配置-🦀.json");
+        .join("\u{914d}\u{7f6e}-\u{1f980}.json");
     save_atomic(&path, &Settings::default()).unwrap();
     assert_eq!(load(&path).unwrap(), Settings::default());
     save_atomic(&path, &full_settings()).unwrap();
@@ -549,4 +628,72 @@ fn default_path_is_side_effect_free_and_appdata_errors_are_actionable() {
         );
     }
     assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn optional_overrides_boundaries_and_old_files_keep_schema_one() {
+    let old = r#"{"schema_version":1,"center":false,"animation":"linear","poll_ms":123,"color":[1,2,3,4]}"#;
+    let inherited = from_json(old).unwrap();
+    assert_eq!(inherited.battery_animation, None);
+    assert_eq!(inherited.battery_poll_ms, None);
+    assert_eq!(
+        inherited
+            .battery_animation
+            .as_deref()
+            .unwrap_or(&inherited.animation),
+        "linear"
+    );
+    assert_eq!(inherited.battery_poll_ms.unwrap_or(inherited.poll_ms), 123);
+    for primary_opacity in [None, Some(0), Some(100)] {
+        for secondary_opacity in [None, Some(0), Some(100)] {
+            for corner_radius in [0, 10_000] {
+                for startup_delay_secs in [0, 86_400] {
+                    let s = Settings {
+                        primary_opacity,
+                        secondary_opacity,
+                        corner_radius,
+                        startup_delay_secs,
+                        skip_resolutions: vec![1, 65535],
+                        ..inherited.clone()
+                    };
+                    assert_eq!(from_json(&to_json(&s).unwrap()).unwrap(), s);
+                }
+            }
+        }
+    }
+    for &easing in EASING_NAMES {
+        for poll in [None, Some(50), Some(10_000)] {
+            let s = Settings {
+                battery_animation: Some(easing.into()),
+                battery_poll_ms: poll,
+                ..inherited.clone()
+            };
+            assert_eq!(from_json(&to_json(&s).unwrap()).unwrap(), s);
+        }
+    }
+    assert!(std::ptr::eq(EASING_NAMES, taskbarx_core::EASING_NAMES));
+}
+
+#[test]
+fn new_field_types_and_nonpersisted_startup_flag_are_rejected() {
+    for json in [
+        r#"{"primary_opacity":-1}"#,
+        r#"{"secondary_opacity":256}"#,
+        r#"{"primary_opacity":0.5}"#,
+        r#"{"primary_opacity":"100"}"#,
+        r#"{"battery_animation":false}"#,
+        r#"{"battery_poll_ms":-1}"#,
+        r#"{"skip_resolutions":[1,null]}"#,
+        r#"{"skip_resolutions":[1.5]}"#,
+        r#"{"skip_resolutions":null}"#,
+        r#"{"measurement":null}"#,
+        r#"{"corner_radius":-1}"#,
+        r#"{"startup_delay_secs":-1}"#,
+        r#"{"startup_enabled":true}"#,
+        r#"{"tray_icon":1}"#,
+        r#"{"hide_primary_start":null}"#,
+        r#"{"primary_opacity":null,"primary_opacity":100}"#,
+    ] {
+        assert!(from_json(json).is_err(), "{json}");
+    }
 }

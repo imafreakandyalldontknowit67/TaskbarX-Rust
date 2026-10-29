@@ -6,6 +6,7 @@ license = "MIT"
 description = "Validated JSON settings and atomic persistence for TaskbarX-Rust"
 
 [dependencies]
+taskbarx-core = { path = "../taskbarx-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

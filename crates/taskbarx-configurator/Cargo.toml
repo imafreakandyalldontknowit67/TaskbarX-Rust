@@ -7,6 +7,8 @@ description = "Native Windows configurator for TaskbarX's CLI protocol"
 
 
 [dependencies]
+taskbarx-config = { path = "../taskbarx-config" }
+taskbarx-shell = { path = "../taskbarx-shell" }
 taskbarx-core = { path = "../taskbarx-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -17,6 +19,7 @@ windows = { version = "0.61", default-features = false, features = [
     "Win32_Graphics_Gdi",
     "Win32_System_LibraryLoader",
     "Win32_UI_Controls",
+    "Win32_UI_Controls_Dialogs",
     "Win32_UI_HiDpi",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",

@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-pub const HELP: &str = "TaskbarX Configurator\n\nUsage: taskbarx-configurator.exe [--engine PATH] [--config PATH]\n\nThe default engine is taskbarx.exe beside this executable, never from PATH.\nWithout --config, the engine chooses its default config location.\nSave only persists settings. Apply/start saves, stops, then starts the engine.\nClosing this window does not stop a separately running engine.\nNo startup registration or scheduled tasks are created.";
+pub const HELP: &str = "TaskbarX Configurator\n\nUsage: taskbarx-configurator.exe [--engine PATH] [--config PATH]\n\nThe default engine is taskbarx.exe beside this executable, never from PATH.\nWithout --config, the engine chooses its default config location.\nSave only persists settings. Apply/start saves, stops, then starts the engine.\nClosing this window does not stop a separately running engine.\nStartup changes require explicit Enable/update or Disable actions; Save/Apply never change startup.";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Options {
@@ -68,7 +68,24 @@ impl Options {
         Ok(Arguments::Options(Self { engine, config }))
     }
 
+    /// Display-only launch description; never fed back to a shell/process parser.
+    pub fn start_menu_launch(&self) -> taskbarx_shell::LaunchSpec {
+        taskbarx_shell::LaunchSpec {
+            executable: self.engine.clone(),
+            args: vec!["start-menu".into()],
+            working_directory: self.engine.parent().unwrap_or(Path::new(".")).to_path_buf(),
+        }
+    }
+
     pub fn command(&self, operation: Operation) -> CommandSpec {
+        let uses_config = matches!(
+            &operation,
+            Operation::Show
+                | Operation::Import(_)
+                | Operation::Run
+                | Operation::Diagnose
+                | Operation::StartupEnable { .. }
+        );
         let (mut args, stdin, mode, timeout) = match operation {
             Operation::Show => (
                 vec!["config".into(), "show".into()],
@@ -100,9 +117,65 @@ impl Options {
                 Mode::Wait,
                 Duration::from_secs(10),
             ),
+            Operation::StartupStatus => (
+                vec!["startup".into(), "status".into(), "--json".into()],
+                None,
+                Mode::Wait,
+                Duration::from_secs(10),
+            ),
+            Operation::StartupEnable { delay_secs } => (
+                vec![
+                    "startup".into(),
+                    "enable".into(),
+                    "--delay-secs".into(),
+                    delay_secs.to_string().into(),
+                    "--json".into(),
+                ],
+                None,
+                Mode::Wait,
+                Duration::from_secs(10),
+            ),
+            Operation::StartupDisable => (
+                vec!["startup".into(), "disable".into(), "--json".into()],
+                None,
+                Mode::Wait,
+                Duration::from_secs(10),
+            ),
+            Operation::OpenStart => (
+                vec!["start-menu".into()],
+                None,
+                Mode::Wait,
+                Duration::from_secs(10),
+            ),
+            Operation::ShortcutCreate { path, icon } => {
+                let mut args = vec![
+                    "shortcut".into(),
+                    "create".into(),
+                    "--path".into(),
+                    path.into_os_string(),
+                ];
+                if let Some(icon) = icon {
+                    args.extend(["--icon".into(), icon.into_os_string()]);
+                }
+                args.push("--json".into());
+                (args, None, Mode::Wait, Duration::from_secs(10))
+            }
+            Operation::ShortcutRemove { path } => (
+                vec![
+                    "shortcut".into(),
+                    "remove".into(),
+                    "--path".into(),
+                    path.into_os_string(),
+                    "--json".into(),
+                ],
+                None,
+                Mode::Wait,
+                Duration::from_secs(10),
+            ),
         };
-        // Stop is global by protocol and must NOT receive --config.
-        if args[0] != "stop" {
+        // Explicit allowlist: shell commands never inherit a config argument,
+        // except startup enable which registers that saved configuration.
+        if uses_config {
             if let Some(path) = &self.config {
                 args.push("--config".into());
                 args.push(path.as_os_str().to_owned());
@@ -124,6 +197,19 @@ pub enum Operation {
     Run,
     Stop,
     Diagnose,
+    StartupStatus,
+    StartupEnable {
+        delay_secs: u32,
+    },
+    StartupDisable,
+    OpenStart,
+    ShortcutCreate {
+        path: PathBuf,
+        icon: Option<PathBuf>,
+    },
+    ShortcutRemove {
+        path: PathBuf,
+    },
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {

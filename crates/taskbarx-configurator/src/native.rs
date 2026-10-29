@@ -4,27 +4,33 @@
 //! Worker threads never hold an HWND or a pointer into window state.
 use std::{
     cell::RefCell,
+    path::PathBuf,
     sync::mpsc::{self, Receiver, Sender, TryRecvError},
     thread,
     time::{Duration, Instant},
 };
 use taskbarx_configurator::{
-    controller::{Action, Controller, Outcome},
+    controller::{startup_report, Action, Controller, Outcome},
     process::{Process, SystemProcess},
     protocol::Options,
-    settings::{Form, ANIMATIONS, STYLES},
+    settings::{
+        hex_rgba, rgba_hex, AnimationPreview, Form, Settings, ANIMATIONS, MEASUREMENT_BACKENDS,
+        STYLES,
+    },
     UPSTREAM_LICENSE,
 };
 use windows::{
     core::{w, PCWSTR},
     Win32::{
-        Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM},
+        Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
         Graphics::Gdi::*,
         System::LibraryLoader::GetModuleHandleW,
         UI::{
-            Controls::*,
+            Controls::{Dialogs::*, *},
             HiDpi::*,
-            Input::KeyboardAndMouse::{EnableWindow, GetFocus, SetFocus},
+            Input::KeyboardAndMouse::{
+                EnableWindow, GetCapture, GetFocus, ReleaseCapture, SetCapture, SetFocus, VK_ESCAPE,
+            },
             WindowsAndMessaging::*,
         },
     },
@@ -45,6 +51,28 @@ const GREEN: u16 = 112;
 const BLUE: u16 = 113;
 const ALPHA: u16 = 114;
 const SWATCH: u16 = 115;
+const PRIMARY_OPACITY: u16 = 116;
+const SECONDARY_OPACITY: u16 = 117;
+const RADIUS: u16 = 118;
+const SEGMENTS: u16 = 119;
+const MAXIMIZED: u16 = 120;
+const BATTERY_ANIMATION: u16 = 121;
+const BATTERY_POLL: u16 = 122;
+const SKIP1: u16 = 123;
+const SKIP2: u16 = 124;
+const SKIP3: u16 = 125;
+const FULLSCREEN: u16 = 126;
+const HIDE_PRIMARY_START: u16 = 127;
+const HIDE_SECONDARY_START: u16 = 128;
+const HIDE_PRIMARY_TRAY: u16 = 129;
+const HIDE_SECONDARY_TRAY: u16 = 130;
+const OVERLAP: u16 = 131;
+const TOOLBARS: u16 = 132;
+const TRAY_ICON: u16 = 133;
+const DELAY: u16 = 134;
+const MEASUREMENT: u16 = 135;
+const CONSOLE: u16 = 136;
+const COLOR_HEX: u16 = 137;
 const SAVE: u16 = 201;
 const APPLY: u16 = 202;
 const STOP: u16 = 203;
@@ -53,7 +81,30 @@ const RESET: u16 = 205;
 const DIAGNOSE: u16 = 206;
 const ABOUT: u16 = 207;
 const CLOSE: u16 = 208;
+const RESTART: u16 = 209;
+const STARTUP_REFRESH: u16 = 210;
+const STARTUP_ENABLE: u16 = 211;
+const STARTUP_DISABLE: u16 = 212;
+const SHORTCUT_GENERATE: u16 = 213;
+const SHORTCUT_CREATE: u16 = 214;
+const SHORTCUT_REMOVE: u16 = 215;
+const OPEN_START: u16 = 216;
+const REMOVE_STARTUP: u16 = 217;
+const REMOVE_STOP: u16 = 218;
+const COLOR_DIALOG: u16 = 219;
+const EYEDROPPER: u16 = 220;
+const ANIMATION_PREV: u16 = 221;
+const ANIMATION_NEXT: u16 = 222;
+const BATTERY_PREV: u16 = 223;
+const BATTERY_NEXT: u16 = 224;
+const PREVIEW_BATTERY: u16 = 225;
+const PREVIEW_CANCEL: u16 = 226;
 const OUTPUT: u16 = 301;
+const DIRTY: u16 = 303;
+const STARTUP_STATUS: u16 = 304;
+const SHORTCUT_PATH: u16 = 305;
+const SHORTCUT_ICON: u16 = 306;
+const SHORTCUT_COMMAND: u16 = 307;
 const CONTENT_W: i32 = 850;
 const CONTENT_H: i32 = 600;
 const NAV: u16 = 500;
@@ -84,12 +135,13 @@ const ICONS: [&str; 9] = [
 // the unrelated SystemServices feature).
 const SS_LEFT: u32 = 0;
 const SS_OWNERDRAW: u32 = 13;
+#[cfg(test)]
+thread_local! {
+    static LAYOUT_REPAINT_FLAGS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
 
 fn wide(s: &str) -> Vec<u16> {
-    s.replace('\0', "\u{fffd}")
-        .encode_utf16()
-        .chain(Some(0))
-        .collect()
+    s.replace('\0', " ").encode_utf16().chain(Some(0)).collect()
 }
 pub fn message(text: &str, error: bool) {
     unsafe {
@@ -123,14 +175,32 @@ struct Item {
     h: i32,
 }
 enum Event {
-    Done(Box<Result<Outcome, String>>),
+    Done(Box<Completion>),
     Runtime(String),
+}
+struct Completion {
+    result: Result<Outcome, String>,
+    saved: Option<Settings>,
+    startup: Option<taskbarx_shell::StartupStatus>,
+}
+struct PreviewPlayback {
+    started: Instant,
+    animation: AnimationPreview,
+}
+struct PickSession {
+    original: [u8; 4],
+    hex: String,
 }
 struct Ui {
     hwnd: HWND,
     page: i32,
     building_page: i32,
-    preview: Option<Instant>,
+    preview: Option<PreviewPlayback>,
+    picker: Option<PickSession>,
+    color_dialog_requested: bool,
+    custom_colors: [COLORREF; 16],
+    saved: Option<Settings>,
+    schema_version: u32,
     items: Vec<Item>,
     dpi: u32,
     font: HFONT,
@@ -323,21 +393,13 @@ impl Ui {
         )?;
         Ok(())
     }
-    unsafe fn unavailable(&mut self, text: &str, x: i32, y: i32, width: i32) -> Result<(), String> {
-        let h = self.add(
-            0,
-            w!("BUTTON"),
-            text,
-            WINDOW_STYLE(BS_AUTOCHECKBOX as u32),
-            x,
-            y,
-            width,
-            28,
-        )?;
-        let _ = EnableWindow(h, false);
-        Ok(())
-    }
     unsafe fn show_page(&mut self, page: i32) {
+        if page != 0 {
+            self.finish_pick(false);
+        }
+        if page != 1 {
+            self.preview = None;
+        }
         self.page = page.clamp(0, 8);
         self.set_text(TITLE, PAGES[self.page as usize]);
         self.scroll_x = 0;
@@ -381,6 +443,7 @@ impl Ui {
             (RESET, "Reset", 200, 90),
             (SAVE, "Save", 300, 90),
             (RELOAD, "Reload", 400, 90),
+            (RESTART, "Restart saved", 500, 135),
             (APPLY, "Apply", 714, 110),
         ] {
             self.button(id, text, x, 548, width)?;
@@ -396,15 +459,26 @@ impl Ui {
             24,
         )?;
 
+        self.add(
+            DIRTY,
+            w!("STATIC"),
+            "Settings not loaded",
+            WINDOW_STYLE(SS_LEFT),
+            201,
+            491,
+            620,
+            22,
+        )?;
         self.building_page = 0;
         // Keep the protocol's canonical style values in a hidden combo; visible
         // radios use the same validated selection without duplicating settings.
         self.building_page = -2;
-        self.combo(STYLE, "", &STYLES, 200, 90)?;
+        self.combo(STYLE, "", STYLES, 200, 90)?;
         self.building_page = 0;
         for (index, label, y) in [
             (0, "Default", 94),
             (1, "Transparent", 131),
+            (5, "Transparent Gradient", 168),
             (4, "Opaque", 205),
             (2, "Blur", 242),
             (3, "Acrylic (can flicker)", 279),
@@ -420,41 +494,42 @@ impl Ui {
                 30,
             )?;
         }
-        let h = self.add(
-            0,
-            w!("BUTTON"),
-            "Transparent Gradient",
-            WINDOW_STYLE(BS_RADIOBUTTON as u32),
-            201,
-            168,
-            240,
-            30,
+        self.edit(
+            PRIMARY_OPACITY,
+            "Primary opacity % (blank = restore)",
+            480,
+            96,
+            322,
         )?;
-        let _ = EnableWindow(h, false);
-        self.label("Total Opacity", 548, 96, 200, 24)?;
-        self.label("Primary taskbar", 515, 132, 150, 24)?;
-        self.label("Secondary taskbar", 515, 170, 155, 24)?;
-        self.label("Not ported", 684, 132, 130, 24)?;
-        self.label("Not ported", 684, 170, 130, 24)?;
-        self.label("Corner Radius / Taskbar Segments", 515, 224, 300, 24)?;
-        self.label("Not available in the Rust engine yet", 515, 252, 300, 38)?;
-        self.unavailable("Switch back to Default on maximized window", 201, 322, 600)?;
-        self.label(
-            "Gray options are not ported. Color controls below work with supported styles.",
-            201,
-            357,
-            620,
-            22,
+        self.edit(
+            SECONDARY_OPACITY,
+            "Secondary opacity % (blank = restore)",
+            480,
+            158,
+            322,
         )?;
+        self.edit(RADIUS, "Corner radius (px)", 480, 224, 150)?;
+        self.check(SEGMENTS, "Segments", 648, 244, 160)?;
+        self.check(
+            MAXIMIZED,
+            "Default background on maximized windows",
+            201,
+            312,
+            610,
+        )?;
+        self.edit(COLOR_HEX, "#RRGGBB or #RRGGBBAA", 201, 348, 240)?;
+        self.label("RGBA 0..255 (alpha is a byte)", 465, 348, 335, 22)?;
+        self.button(COLOR_DIALOG, "Color dialog...", 465, 370, 160)?;
+        self.button(EYEDROPPER, "Screen picker", 640, 370, 160)?;
         self.add(
             SWATCH,
             w!("STATIC"),
             "Color preview",
             WINDOW_STYLE(SS_OWNERDRAW),
             201,
-            392,
+            412,
             132,
-            110,
+            70,
         )?;
         for (i, (id, label)) in [
             (RED, "Red"),
@@ -465,8 +540,8 @@ impl Ui {
         .iter()
         .enumerate()
         {
-            let y = 389 + i as i32 * 29;
-            self.label(label, 350, y + 4, 55, 22)?;
+            let y = 408 + i as i32 * 19;
+            self.label(label, 350, y, 55, 19)?;
             let slider = self.add(
                 SLIDER + i as u16,
                 w!("msctls_trackbar32"),
@@ -475,7 +550,7 @@ impl Ui {
                 405,
                 y,
                 310,
-                26,
+                19,
             )?;
             SendMessageW(
                 slider,
@@ -491,29 +566,31 @@ impl Ui {
                 730,
                 y,
                 70,
-                24,
+                19,
             )?;
         }
         self.building_page = 1;
-        self.combo(ANIMATION, "Animation Style", &ANIMATIONS, 201, 96)?;
-        self.label("Animation Style OnBattery", 201, 170, 330, 24)?;
-        self.label(
-            "Uses the same animation - battery override not ported",
-            201,
-            198,
-            580,
-            28,
-        )?;
-        self.edit(DURATION, "Animation Speed (ms)", 201, 251, 180)?;
-        self.button(PREVIEW, "Preview", 201, 335, 90)?;
+        self.combo(ANIMATION, "Animation Style", ANIMATIONS, 201, 96)?;
+        self.button(ANIMATION_PREV, "Previous", 580, 115, 100)?;
+        self.button(ANIMATION_NEXT, "Next", 695, 115, 100)?;
+        let battery_choices: Vec<_> = std::iter::once("Inherit ordinary animation")
+            .chain(ANIMATIONS.iter().copied())
+            .collect();
+        self.combo(BATTERY_ANIMATION, "On battery", &battery_choices, 201, 170)?;
+        self.button(BATTERY_PREV, "Previous", 580, 189, 100)?;
+        self.button(BATTERY_NEXT, "Next", 695, 189, 100)?;
+        self.edit(DURATION, "Duration (ms; 0 = instant)", 201, 245, 260)?;
+        self.button(PREVIEW, "Preview ordinary", 201, 318, 175)?;
+        self.button(PREVIEW_BATTERY, "Preview battery", 390, 318, 175)?;
+        self.button(PREVIEW_CANCEL, "Cancel preview", 580, 318, 175)?;
         let preview = self.add(
             PREVIEW_TRACK,
             w!("msctls_trackbar32"),
             "Local animation preview",
             WINDOW_STYLE(TBS_NOTICKS),
-            308,
-            335,
-            490,
+            201,
+            375,
+            600,
             32,
         )?;
         SendMessageW(
@@ -523,123 +600,149 @@ impl Ui {
             Some(LPARAM(1000 << 16)),
         );
         let _ = EnableWindow(preview, false);
-        self.label(
-            "Preview animates only this slider. It does not move your taskbar.",
-            201,
-            394,
-            610,
-            45,
-        )?;
-        self.label(
-            "42 original easing choices - 0 ms means instant",
-            201,
-            450,
-            610,
-            24,
-        )?;
+        self.label("Previews affect only this slider, never taskbars or the engine.\nBattery inheritance follows the ordinary selection, not a fixed default.", 201, 431, 610, 48)?;
+
         self.building_page = 2;
-        self.edit(PRIMARY_OFFSET, "Primary Taskbar Offset (px)", 201, 96, 260)?;
+        self.edit(PRIMARY_OFFSET, "Primary Taskbar Offset (px)", 201, 96, 280)?;
         self.edit(
             SECONDARY_OFFSET,
             "Secondary Taskbar Offset (px)",
             201,
             170,
-            260,
+            280,
         )?;
-        self.label("Skip Resolution", 201, 245, 260, 24)?;
         self.label(
-            "Not ported - resolution-based exceptions are unavailable.",
+            "Skip primary monitor widths (px; blank slots are unused)",
             201,
-            274,
+            245,
             610,
-            40,
+            24,
         )?;
-        self.check(BETWEEN, "Compensate Tray Clock etc...", 201, 374, 590)?;
-        self.check(CENTER, "Center Taskbar", 201, 419, 590)?;
+        for (id, x) in [(SKIP1, 201), (SKIP2, 405), (SKIP3, 609)] {
+            self.edit(id, "1..65535", x, 277, 185)?;
+        }
+        self.check(
+            BETWEEN,
+            "Center between Start and tray / clock",
+            201,
+            353,
+            610,
+        )?;
+        self.check(CENTER, "Center Taskbar", 201, 392, 610)?;
+        self.check(OVERLAP, "Revert centering on tray overlap", 201, 431, 610)?;
         self.label(
-            "Offsets are relative to the center. Negative numbers move left / up.",
+            "Signed offsets are physical pixels relative to the center.",
             201,
             466,
-            620,
+            610,
+            22,
+        )?;
+
+        self.building_page = 3;
+        self.edit(DELAY, "Startup delay preference (seconds)", 201, 96, 325)?;
+        self.button(STARTUP_REFRESH, "Refresh status", 201, 166, 175)?;
+        self.button(STARTUP_ENABLE, "Enable / update", 390, 166, 185)?;
+        self.button(STARTUP_DISABLE, "Disable / remove", 590, 166, 210)?;
+        self.label("Enable uses the selected SAVED configuration and the delay above.\nIt does not save this form. Save/Apply never change startup registration.\nChanging delay alone does not update Task Scheduler.", 201, 210, 620, 65)?;
+        self.readonly(
+            STARTUP_STATUS,
+            "Status not queried. Use Refresh status. No registration occurs on opening.",
+            201,
+            290,
+            600,
+            192,
+        )?;
+
+        self.building_page = 4;
+        for (id, label, y) in [
+            (PRIMARY, "Primary taskbar (centering and styling)", 96),
+            (SECONDARY, "Secondary taskbars (centering and styling)", 133),
+            (TOOLBARS, "Compensate for toolbar / tray size changes", 170),
+            (FULLSCREEN, "Pause on fullscreen applications", 207),
+            (HIDE_PRIMARY_START, "Hide primary Start button", 244),
+            (HIDE_SECONDARY_START, "Hide secondary Start buttons", 281),
+            (HIDE_PRIMARY_TRAY, "Hide primary tray area", 318),
+            (HIDE_SECONDARY_TRAY, "Hide secondary tray areas", 355),
+            (TRAY_ICON, "Show engine tray icon", 392),
+        ] {
+            self.check(id, label, 201, y, 610)?;
+        }
+        self.label(
+            "Changes take effect only with Apply or a later engine start.",
+            201,
+            452,
+            610,
             30,
         )?;
-        self.building_page = 3;
-        self.label("Startup", 201, 104, 600, 30)?;
-        self.label("The original Configurator used Windows Task Scheduler.\nThis Rust version does not yet provide startup registration.",201,151,600,75)?;
-        self.label("Opening this window, saving or applying settings will never create\na scheduled task or silently enable automatic startup.",201,268,610,75)?;
-        self.building_page = 4;
-        self.check(PRIMARY, "Primary taskbar", 201, 102, 600)?;
-        self.check(SECONDARY, "Secondary taskbars", 201, 147, 600)?;
-        self.label(
-            "Choose which taskbars receive centering and styling.",
-            201,
-            199,
-            600,
-            45,
-        )?;
-        self.unavailable("Hide primary Start button (not ported)", 201, 270, 610)?;
-        self.unavailable("Hide secondary Start button (not ported)", 201, 310, 610)?;
-        self.unavailable("Hide tray area (not ported)", 201, 350, 610)?;
-        self.unavailable(
-            "Pause on fullscreen / maximized windows (not ported)",
-            201,
-            390,
-            610,
-        )?;
+
         self.building_page = 5;
-        self.edit(POLL, "Refresh Rate (ms)", 201, 96, 260)?;
-        self.button(DIAGNOSE, "Read-only diagnostics", 490, 117, 310)?;
-        self.label("Engine", 201, 164, 100, 22)?;
-        self.add(
-            401,
-            w!("EDIT"),
-            &options.engine.display().to_string(),
-            WS_BORDER | WS_TABSTOP | WINDOW_STYLE(ES_READONLY as u32 | ES_AUTOHSCROLL as u32),
+        self.combo(
+            MEASUREMENT,
+            "Measurement backend (MSAA / UI Automation)",
+            MEASUREMENT_BACKENDS,
             201,
-            188,
+            96,
+        )?;
+        self.check(CONSOLE, "Show engine console", 580, 115, 230)?;
+        self.edit(POLL, "Poll interval (ms)", 201, 162, 275)?;
+        self.edit(
+            BATTERY_POLL,
+            "Battery poll (blank = inherit)",
+            505,
+            162,
+            296,
+        )?;
+        self.label("Selected engine / saved configuration", 201, 220, 600, 22)?;
+        self.readonly(
+            401,
+            &options.engine.display().to_string(),
+            201,
+            243,
             600,
             25,
         )?;
-        self.label("Settings file", 201, 225, 200, 22)?;
-        self.add(
+        self.readonly(
             402,
-            w!("EDIT"),
             &options
                 .config
                 .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|| "%APPDATA%\\TaskbarX-Rust\\settings.json".into()),
-            WS_BORDER | WS_TABSTOP | WINDOW_STYLE(ES_READONLY as u32 | ES_AUTOHSCROLL as u32),
             201,
-            249,
+            274,
             600,
             25,
         )?;
-        self.label("Status / diagnostics", 201, 288, 600, 22)?;
-        let output = self.add(
-            OUTPUT,
-            w!("EDIT"),
-            "Loading settings",
-            WS_TABSTOP
-                | WS_BORDER
-                | WS_VSCROLL
-                | WINDOW_STYLE(ES_MULTILINE as u32 | ES_AUTOVSCROLL as u32 | ES_READONLY as u32),
-            201,
-            314,
-            600,
-            180,
-        )?;
+        self.button(DIAGNOSE, "Read-only diagnostics", 201, 309, 270)?;
+        let output = self.readonly(OUTPUT, "Loading settings", 201, 354, 600, 128)?;
         SendMessageW(output, EM_SETLIMITTEXT, Some(WPARAM(512 * 1024)), None);
+
         self.building_page = 6;
-        self.label("Custom Start Button", 201, 104, 600, 30)?;
-        self.label("The original Start-button shortcut workflow is not ported.\nThis configurator will not hide or replace your Start button.",201,160,600,85)?;
-        self.label(
-            "Your Windows Start menu continues to work normally.",
+        self.edit(SHORTCUT_PATH, "Chosen shortcut path (.lnk)", 201, 96, 600)?;
+        self.edit(
+            SHORTCUT_ICON,
+            "Optional icon path (blank = default)",
             201,
-            295,
+            161,
             600,
-            45,
         )?;
+        for id in [SHORTCUT_PATH, SHORTCUT_ICON] {
+            SendMessageW(self.control(id), EM_SETLIMITTEXT, Some(WPARAM(32767)), None);
+        }
+        self.button(SHORTCUT_GENERATE, "Show command", 201, 229, 180)?;
+        self.button(SHORTCUT_CREATE, "Create shortcut", 399, 229, 180)?;
+        self.button(SHORTCUT_REMOVE, "Remove owned .lnk", 597, 229, 204)?;
+        self.readonly(
+            SHORTCUT_COMMAND,
+            &taskbarx_shell::format_command_line(&options.start_menu_launch())?,
+            201,
+            278,
+            600,
+            78,
+        )?;
+        self.button(OPEN_START, "Open Start now", 201, 375, 200)?;
+        self.label("Creation/removal requires an explicit click and affects only the chosen path.\nRemoval checks ownership; unrelated shortcuts are not removed.\nPinning to the taskbar is a manual Windows operation.\nNo Start buttons are hidden by previewing or creating this shortcut.", 201, 417, 620, 68)?;
+
         self.building_page = 7;
         self.label("TaskbarX", 201, 105, 600, 35)?;
         self.label(
@@ -651,20 +754,44 @@ impl Ui {
         )?;
         self.label("An independent rewrite of ChrisAnd1998/TaskbarX.\nNative Rust / Win32 - no .NET or browser runtime.\n\nDesigned for the classic Windows 10 taskbar.\nThe modern Windows 11 taskbar is unsupported.",201,208,600,145)?;
         self.button(ABOUT, "MIT license / attribution", 201, 389, 280)?;
-        self.label("Closing the configurator leaves the centering engine running.\nUse Stop TaskbarX to restore and stop it.",201,445,600,50)?;
+        self.label("Upstream release checks do not identify updates to this Rust rewrite.\nClosing this window leaves the engine running; Stop restores it.",201,435,610,48)?;
         self.building_page = 8;
         self.label("Remove TaskbarX Rust", 201, 104, 600, 35)?;
-        self.label("1. Click Stop TaskbarX at the bottom left.\n2. Close this configurator.\n3. Delete the portable application folder when you no longer need it.\n\nSettings are stored in %APPDATA%\\TaskbarX-Rust.\nNo startup task or registry startup entry is created by this app.",201,165,610,200)?;
-        self.label(
-            "This page never deletes files automatically.",
-            201,
-            416,
-            600,
-            35,
-        )?;
+        self.label("These are separate, explicit actions. Settings are preserved.\nNo application directory or unrelated scheduled task is deleted.", 201, 155, 610, 62)?;
+        self.button(REMOVE_STARTUP, "Remove owned startup task", 201, 239, 340)?;
+        self.button(REMOVE_STOP, "Graceful stop and restore", 201, 292, 340)?;
+        self.label("After stopping successfully, close this window and manually remove\nthe portable application folder if desired. Keep your configuration.\nRemove any custom Start shortcut explicitly on the Start Button page.", 201, 369, 610, 95)?;
         self.building_page = -1;
         self.show_page(0);
         Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn readonly(
+        &mut self,
+        id: u16,
+        text: &str,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<HWND, String> {
+        let style = if height <= 30 {
+            WINDOW_STYLE(ES_READONLY as u32 | ES_AUTOHSCROLL as u32)
+        } else {
+            WS_VSCROLL
+                | WINDOW_STYLE(ES_READONLY as u32 | ES_MULTILINE as u32 | ES_AUTOVSCROLL as u32)
+        };
+        self.add(
+            id,
+            w!("EDIT"),
+            text,
+            WS_BORDER | WS_TABSTOP | style,
+            x,
+            y,
+            width,
+            height,
+        )
     }
 
     unsafe fn replace_font(&mut self) -> Result<(), String> {
@@ -759,12 +886,10 @@ impl Ui {
         // Defer repaint until the window procedure has released RefCell<Ui>.
         // MoveWindow(..., true) synchronously sent WM_DRAWITEM while borrowed,
         // causing owner-drawn controls to skip painting and retain old pixels.
-        let _ = RedrawWindow(
-            Some(self.hwnd),
-            None,
-            None,
-            RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
-        );
+        let flags = RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN;
+        #[cfg(test)]
+        LAYOUT_REPAINT_FLAGS.with(|record| record.set(flags.0));
+        let _ = RedrawWindow(Some(self.hwnd), None, None, flags);
     }
 
     unsafe fn ensure_focus_visible(&mut self) {
@@ -779,7 +904,7 @@ impl Ui {
             if GetClientRect(self.hwnd, &mut rect).is_err() {
                 return;
             }
-            let height = if item.id == ANIMATION || item.id == STYLE {
+            let height = if matches!(item.id, ANIMATION | STYLE | BATTERY_ANIMATION | MEASUREMENT) {
                 26
             } else {
                 item.h
@@ -857,32 +982,76 @@ impl Ui {
         let checked = |id| {
             SendMessageW(self.control(id), BM_GETCHECK, None, None).0 == BST_CHECKED.0 as isize
         };
+        let battery_index =
+            SendMessageW(self.control(BATTERY_ANIMATION), CB_GETCURSEL, None, None).0;
         Form {
+            schema_version: self.schema_version,
             center: checked(CENTER),
             primary: checked(PRIMARY),
             secondary: checked(SECONDARY),
             center_between: checked(BETWEEN),
+            taskbar_segments: checked(SEGMENTS),
+            default_style_on_maximized: checked(MAXIMIZED),
+            pause_on_fullscreen: checked(FULLSCREEN),
+            hide_primary_start: checked(HIDE_PRIMARY_START),
+            hide_secondary_start: checked(HIDE_SECONDARY_START),
+            hide_primary_tray: checked(HIDE_PRIMARY_TRAY),
+            hide_secondary_tray: checked(HIDE_SECONDARY_TRAY),
+            revert_on_tray_overlap: checked(OVERLAP),
+            toolbar_compensation: checked(TOOLBARS),
+            tray_icon: checked(TRAY_ICON),
+            show_console: checked(CONSOLE),
             primary_offset: self.text(PRIMARY_OFFSET),
             secondary_offset: self.text(SECONDARY_OFFSET),
-            animation: self.selected(ANIMATION, &ANIMATIONS),
             animation_ms: self.text(DURATION),
             poll_ms: self.text(POLL),
-            style: self.selected(STYLE, &STYLES),
+            primary_opacity: self.text(PRIMARY_OPACITY),
+            secondary_opacity: self.text(SECONDARY_OPACITY),
+            corner_radius: self.text(RADIUS),
+            battery_poll_ms: self.text(BATTERY_POLL),
+            startup_delay_secs: self.text(DELAY),
+            animation: self.selected(ANIMATION, ANIMATIONS),
+            battery_animation: if battery_index == 0 {
+                String::new()
+            } else {
+                ANIMATIONS
+                    .get((battery_index - 1) as usize)
+                    .copied()
+                    .unwrap_or("invalid selection")
+                    .into()
+            },
+            style: self.selected(STYLE, STYLES),
+            measurement: self.selected(MEASUREMENT, MEASUREMENT_BACKENDS),
             color: [
                 self.text(RED),
                 self.text(GREEN),
                 self.text(BLUE),
                 self.text(ALPHA),
             ],
+            skip_resolutions: [self.text(SKIP1), self.text(SKIP2), self.text(SKIP3)],
         }
     }
     unsafe fn fill(&mut self, form: &Form) {
+        self.finish_pick(false);
+        self.preview = None;
         self.populating = true;
+        self.schema_version = form.schema_version;
         for (id, value) in [
             (CENTER, form.center),
             (PRIMARY, form.primary),
             (SECONDARY, form.secondary),
             (BETWEEN, form.center_between),
+            (SEGMENTS, form.taskbar_segments),
+            (MAXIMIZED, form.default_style_on_maximized),
+            (FULLSCREEN, form.pause_on_fullscreen),
+            (HIDE_PRIMARY_START, form.hide_primary_start),
+            (HIDE_SECONDARY_START, form.hide_secondary_start),
+            (HIDE_PRIMARY_TRAY, form.hide_primary_tray),
+            (HIDE_SECONDARY_TRAY, form.hide_secondary_tray),
+            (OVERLAP, form.revert_on_tray_overlap),
+            (TOOLBARS, form.toolbar_compensation),
+            (TRAY_ICON, form.tray_icon),
+            (CONSOLE, form.show_console),
         ] {
             SendMessageW(
                 self.control(id),
@@ -896,16 +1065,25 @@ impl Ui {
             (SECONDARY_OFFSET, &form.secondary_offset),
             (DURATION, &form.animation_ms),
             (POLL, &form.poll_ms),
+            (PRIMARY_OPACITY, &form.primary_opacity),
+            (SECONDARY_OPACITY, &form.secondary_opacity),
+            (RADIUS, &form.corner_radius),
+            (BATTERY_POLL, &form.battery_poll_ms),
+            (DELAY, &form.startup_delay_secs),
             (RED, &form.color[0]),
             (GREEN, &form.color[1]),
             (BLUE, &form.color[2]),
             (ALPHA, &form.color[3]),
+            (SKIP1, &form.skip_resolutions[0]),
+            (SKIP2, &form.skip_resolutions[1]),
+            (SKIP3, &form.skip_resolutions[2]),
         ] {
             self.set_text(id, text);
         }
         for (id, value, choices) in [
-            (ANIMATION, form.animation.as_str(), ANIMATIONS.as_slice()),
-            (STYLE, form.style.as_str(), STYLES.as_slice()),
+            (ANIMATION, form.animation.as_str(), ANIMATIONS),
+            (STYLE, form.style.as_str(), STYLES),
+            (MEASUREMENT, form.measurement.as_str(), MEASUREMENT_BACKENDS),
         ] {
             let index = choices
                 .iter()
@@ -919,24 +1097,98 @@ impl Ui {
                 None,
             );
         }
+        let battery_index = if form.battery_animation.is_empty() {
+            0
+        } else {
+            ANIMATIONS
+                .iter()
+                .position(|v| *v == form.battery_animation)
+                .map(|i| i as isize + 1)
+                .unwrap_or(-1)
+        };
+        SendMessageW(
+            self.control(BATTERY_ANIMATION),
+            CB_SETCURSEL,
+            Some(WPARAM(battery_index as usize)),
+            None,
+        );
         self.sync_style();
-        self.sync_sliders();
+        self.sync_color_from_rgba();
         self.has_form = true;
         self.populating = false;
-        let _ = InvalidateRect(Some(self.control(SWATCH)), None, true);
+        self.update_dirty();
+    }
+    unsafe fn validated_form(
+        &self,
+    ) -> Result<Form, taskbarx_configurator::settings::ValidationError> {
+        let form = self.read_form();
+        let rgba = form.rgba()?;
+        hex_rgba(&self.text(COLOR_HEX), rgba[3])?;
+        form.settings()?;
+        Ok(form)
+    }
+    unsafe fn update_dirty(&self) {
+        let saved = self.validated_form().ok().and_then(|f| f.settings().ok());
+        let text = if !self.has_form {
+            "Settings not loaded"
+        } else if self.saved.is_some() && saved == self.saved {
+            "Form matches last loaded/saved settings. Startup registration is separate."
+        } else {
+            "UNSAVED settings. Save/Apply persists; Restart and startup use saved settings."
+        };
+        self.set_text(DIRTY, text);
+    }
+    unsafe fn edited(&mut self) {
+        self.preview = None;
+        self.update_dirty();
+        self.set_text(
+            OUTPUT,
+            "Form edited locally. Save persists; Apply saves/restarts. Startup is unchanged.",
+        );
     }
     unsafe fn availability(&self) {
+        // Explicit ID groups only: preview indicator, hidden style combo, labels
+        // and read-only reports must never be enabled by a blanket loop.
+        let local = !self.busy && self.picker.is_none() && !self.color_dialog_requested;
         for item in &self.items {
-            if (RADIO..RADIO + 5).contains(&item.id)
+            let form_control = is_form_control(item.id)
+                || (RADIO..RADIO + 6).contains(&item.id)
                 || (SLIDER..SLIDER + 4).contains(&item.id)
-                || item.id == PREVIEW
-            {
-                let _ = EnableWindow(item.hwnd, !self.busy && self.has_form);
-            }
-            if (CENTER..=ALPHA).contains(&item.id) || (SAVE..=ABOUT).contains(&item.id) {
-                let needs_form =
-                    (CENTER..=ALPHA).contains(&item.id) || item.id == SAVE || item.id == APPLY;
-                let _ = EnableWindow(item.hwnd, !self.busy && (!needs_form || self.has_form));
+                || matches!(
+                    item.id,
+                    COLOR_DIALOG
+                        | EYEDROPPER
+                        | ANIMATION_PREV
+                        | ANIMATION_NEXT
+                        | BATTERY_PREV
+                        | BATTERY_NEXT
+                        | PREVIEW
+                        | PREVIEW_BATTERY
+                        | PREVIEW_CANCEL
+                );
+            let action = matches!(
+                item.id,
+                SAVE | APPLY
+                    | STOP
+                    | RELOAD
+                    | RESET
+                    | DIAGNOSE
+                    | RESTART
+                    | STARTUP_REFRESH
+                    | STARTUP_ENABLE
+                    | STARTUP_DISABLE
+                    | SHORTCUT_GENERATE
+                    | SHORTCUT_CREATE
+                    | SHORTCUT_REMOVE
+                    | OPEN_START
+                    | REMOVE_STARTUP
+                    | REMOVE_STOP
+                    | SHORTCUT_PATH
+                    | SHORTCUT_ICON
+            );
+            if form_control || action {
+                let needs_form = form_control || matches!(item.id, SAVE | APPLY | STARTUP_ENABLE);
+                let _ = EnableWindow(item.hwnd, local && (!needs_form || self.has_form));
             }
         }
     }
@@ -946,7 +1198,7 @@ impl Ui {
         }
         self.busy = true;
         self.availability();
-        self.set_text(OUTPUT, "Working… CLI requests run off the UI thread with deadlines. No other action will run concurrently.");
+        self.set_text(OUTPUT, "Working... CLI requests run off the UI thread with deadlines. No other action will run concurrently.");
         if self.tx.send(action).is_err() {
             self.busy = false;
             self.availability();
@@ -956,9 +1208,11 @@ impl Ui {
     unsafe fn drain(&mut self) {
         loop {
             match self.rx.try_recv() {
-                Ok(Event::Done(result)) => {
+                Ok(Event::Done(completion)) => {
                     self.busy = false;
-                    match *result {
+                    self.saved = completion.saved;
+                    self.set_text(STARTUP_STATUS, &completion.startup.as_ref().map(startup_report).unwrap_or_else(|| "Status unknown / not refreshed. Use Refresh status. No registration is assumed.".into()));
+                    match completion.result {
                         Ok(outcome) => {
                             if let Some(form) = outcome.form {
                                 self.fill(&form);
@@ -966,12 +1220,13 @@ impl Ui {
                             self.set_text(OUTPUT, &outcome.message);
                         }
                         Err(error) => {
-                            self.set_text(OUTPUT, &format!("ERROR — {error}\n\nIf loading failed, fix the file/engine and Reload, or explicitly Reset form to defaults. Nothing was silently replaced."));
+                            self.set_text(OUTPUT, &format!("ERROR - {error}\n\nIf loading failed, fix the file/engine and Reload, or explicitly Reset form to defaults. Nothing was silently replaced."));
                             self.show_page(5);
                             let _ = SetFocus(Some(self.control(OUTPUT)));
                             self.ensure_focus_visible();
                         }
                     }
+                    self.update_dirty();
                     self.availability();
                 }
                 Ok(Event::Runtime(message)) => {
@@ -995,7 +1250,7 @@ impl Ui {
                         self.availability();
                         self.set_text(
                             OUTPUT,
-                            "ERROR — command worker disconnected; operation outcome is unknown.",
+                            "ERROR - command worker disconnected; operation outcome is unknown.",
                         );
                     }
                     break;
@@ -1010,44 +1265,138 @@ impl Ui {
         }
         match id {
             SAVE | APPLY => {
-                let form = self.read_form();
-                if let Err(error) = form.settings() {
-                    self.set_text(
-                        OUTPUT,
-                        &format!("Validation error — {error}. Nothing was saved or applied."),
-                    );
-                    self.alert = Some(format!("{error}\n\nNothing was saved or applied."));
-                    let id = match error.field {
-                        "primary_offset" => PRIMARY_OFFSET,
-                        "secondary_offset" => SECONDARY_OFFSET,
-                        "animation" => ANIMATION,
-                        "animation_ms" => DURATION,
-                        "poll_ms" => POLL,
-                        "style" => STYLE,
-                        "red" => RED,
-                        "green" => GREEN,
-                        "blue" => BLUE,
-                        "alpha" => ALPHA,
-                        _ => OUTPUT,
-                    };
-                    if let Some(page) = self.items.iter().find(|i| i.id == id).map(|i| i.page) {
-                        if page >= 0 {
-                            self.show_page(page);
+                let form = match self.validated_form() {
+                    Ok(form) => form,
+                    Err(error) => {
+                        self.set_text(
+                            OUTPUT,
+                            &format!("Validation error - {error}. Nothing was saved or applied."),
+                        );
+                        self.alert = Some(format!("{error}\n\nNothing was saved or applied."));
+                        let id = match error.field {
+                            "primary_offset" => PRIMARY_OFFSET,
+                            "secondary_offset" => SECONDARY_OFFSET,
+                            "animation" => ANIMATION,
+                            "animation_ms" => DURATION,
+                            "poll_ms" => POLL,
+                            "style" => STYLE,
+                            "red" => RED,
+                            "green" => GREEN,
+                            "blue" => BLUE,
+                            "alpha" => ALPHA,
+                            "color_hex" => COLOR_HEX,
+                            "primary_opacity" => PRIMARY_OPACITY,
+                            "secondary_opacity" => SECONDARY_OPACITY,
+                            "corner_radius" => RADIUS,
+                            "battery_animation" => BATTERY_ANIMATION,
+                            "battery_poll_ms" => BATTERY_POLL,
+                            "skip_resolutions" => SKIP1,
+                            "startup_delay_secs" => DELAY,
+                            "measurement" => MEASUREMENT,
+                            _ => OUTPUT,
+                        };
+                        if let Some(page) = self.items.iter().find(|i| i.id == id).map(|i| i.page) {
+                            if page >= 0 {
+                                self.show_page(page);
+                            }
                         }
+                        let _ = SetFocus(Some(self.control(id)));
+                        self.ensure_focus_visible();
+                        // Parentless modal dialogs are avoided; keeping state
+                        // borrowed across MessageBox would suppress our callback.
+                        return;
                     }
-                    let _ = SetFocus(Some(self.control(id)));
-                    self.ensure_focus_visible();
-                    // Parentless modal dialogs are avoided; keeping state
-                    // borrowed across MessageBox would suppress our callback.
-                    return;
-                }
+                };
                 self.start(if id == SAVE {
                     Action::Save(form)
                 } else {
                     Action::Apply(form)
                 });
             }
-            STOP => self.start(Action::Stop),
+            STOP | REMOVE_STOP => self.start(Action::Stop),
+            RESTART => self.start(Action::Restart),
+            STARTUP_REFRESH => self.start(Action::StartupRefresh),
+            STARTUP_DISABLE | REMOVE_STARTUP => self.start(Action::StartupDisable),
+            STARTUP_ENABLE => match self.read_form().startup_delay() {
+                Ok(delay_secs) => self.start(Action::StartupEnable { delay_secs }),
+                Err(e) => self.set_text(OUTPUT, &e.to_string()),
+            },
+            SHORTCUT_GENERATE => self.start(Action::GenerateShortcut),
+            SHORTCUT_CREATE | SHORTCUT_REMOVE => {
+                // Path text is not shell syntax: preserve spaces and Unicode as
+                // one argv entry. The engine is the ownership/security authority.
+                let path = PathBuf::from(self.text(SHORTCUT_PATH));
+                if !path.is_absolute()
+                    || !path
+                        .extension()
+                        .is_some_and(|v| v.eq_ignore_ascii_case("lnk"))
+                {
+                    self.set_text(
+                        OUTPUT,
+                        "Choose an absolute .lnk path first. Nothing was changed.",
+                    );
+                    return;
+                }
+                let icon_text = self.text(SHORTCUT_ICON);
+                let icon = if icon_text.is_empty() {
+                    None
+                } else {
+                    Some(PathBuf::from(icon_text))
+                };
+                self.start(if id == SHORTCUT_CREATE {
+                    Action::ShortcutCreate { path, icon }
+                } else {
+                    Action::ShortcutRemove { path }
+                });
+            }
+            OPEN_START => self.start(Action::OpenStart),
+            COLOR_DIALOG => {
+                if self.validated_color().is_ok() {
+                    self.color_dialog_requested = true;
+                    self.availability();
+                } else {
+                    self.set_text(
+                        OUTPUT,
+                        "Enter valid RGBA and hex before opening the color dialog.",
+                    );
+                }
+            }
+            EYEDROPPER => self.begin_pick(),
+            ANIMATION_PREV | ANIMATION_NEXT | BATTERY_PREV | BATTERY_NEXT => {
+                let battery = matches!(id, BATTERY_PREV | BATTERY_NEXT);
+                let control = self.control(if battery {
+                    BATTERY_ANIMATION
+                } else {
+                    ANIMATION
+                });
+                let index = SendMessageW(control, CB_GETCURSEL, None, None).0;
+                let count = ANIMATIONS.len() as isize + isize::from(battery);
+                let delta = if matches!(id, ANIMATION_NEXT | BATTERY_NEXT) {
+                    1
+                } else {
+                    -1
+                };
+                SendMessageW(
+                    control,
+                    CB_SETCURSEL,
+                    Some(WPARAM((index + delta).rem_euclid(count) as usize)),
+                    None,
+                );
+                self.edited();
+            }
+            PREVIEW | PREVIEW_BATTERY => match self.read_form().preview(id == PREVIEW_BATTERY) {
+                Ok(animation) => {
+                    self.preview = Some(PreviewPlayback {
+                        started: Instant::now(),
+                        animation,
+                    });
+                    self.preview_tick();
+                }
+                Err(e) => self.set_text(OUTPUT, &format!("Preview: {e}")),
+            },
+            PREVIEW_CANCEL => {
+                self.preview = None;
+            }
             RELOAD => self.start(Action::Reload),
             RESET => self.start(Action::Reset),
             DIAGNOSE => self.start(Action::Diagnostics),
@@ -1066,7 +1415,7 @@ impl Ui {
 
     unsafe fn sync_style(&self) {
         let selected = SendMessageW(self.control(STYLE), CB_GETCURSEL, None, None).0;
-        for i in 0..5 {
+        for i in 0..6 {
             SendMessageW(
                 self.control(RADIO + i),
                 BM_SETCHECK,
@@ -1091,23 +1440,163 @@ impl Ui {
             }
         }
     }
-    unsafe fn preview_tick(&mut self) {
-        if let Some(start) = self.preview {
-            let form = self.read_form();
-            let duration = form.animation_ms.parse::<u32>().unwrap_or(300);
-            let elapsed = start.elapsed().as_millis() as u64;
-            if let Ok(position) =
-                taskbarx_core::animated_position(0, 1000, elapsed, duration, &form.animation)
-            {
-                SendMessageW(
-                    self.control(PREVIEW_TRACK),
-                    TBM_SETPOS,
-                    Some(WPARAM(1)),
-                    Some(LPARAM(position.clamp(0, 1000) as isize)),
-                );
+    unsafe fn validated_color(&self) -> Result<[u8; 4], String> {
+        let color = self.read_form().rgba().map_err(|e| e.to_string())?;
+        hex_rgba(&self.text(COLOR_HEX), color[3]).map_err(|e| e.to_string())?;
+        Ok(color)
+    }
+    unsafe fn set_color(&mut self, color: [u8; 4]) {
+        let previous = self.populating;
+        self.populating = true;
+        for (id, value) in [RED, GREEN, BLUE, ALPHA].into_iter().zip(color) {
+            self.set_text(id, &value.to_string());
+        }
+        self.sync_color_from_rgba();
+        self.populating = previous;
+        self.update_dirty();
+    }
+    unsafe fn sync_color_from_rgba(&self) {
+        self.sync_sliders();
+        if let Ok(color) = self.read_form().rgba() {
+            self.set_text(COLOR_HEX, &rgba_hex(color));
+        }
+        let _ = InvalidateRect(Some(self.control(SWATCH)), None, true);
+    }
+    unsafe fn sync_color_from_hex(&mut self) {
+        let hex_text = self.text(COLOR_HEX);
+        let alpha = self.text(ALPHA).trim().parse::<u8>();
+        // Eight digits replace alpha and can repair an incomplete alpha edit.
+        // Six digits must preserve a valid existing alpha, never invent one.
+        if alpha.is_ok() || hex_text.trim().len() == 9 {
+            if let Ok(color) = hex_rgba(&hex_text, alpha.unwrap_or(0)) {
+                // Keep the entered hex (including six-digit alpha-preserving
+                // syntax) while editing; synchronously update every RGBA input.
+                let hex = self.text(COLOR_HEX);
+                self.set_color(color);
+                self.set_text(COLOR_HEX, &hex);
             }
-            if elapsed >= u64::from(duration) || form.animation == "none" {
+        }
+        self.update_dirty();
+    }
+    unsafe fn complete_color_dialog(
+        &mut self,
+        color: Option<[u8; 4]>,
+        custom: [COLORREF; 16],
+        error: u32,
+    ) {
+        self.color_dialog_requested = false;
+        self.custom_colors = custom;
+        if let Some(color) = color {
+            self.set_color(color);
+            self.edited();
+        } else if error != 0 {
+            self.set_text(
+                OUTPUT,
+                &format!("Color dialog failed: {error:#x}. Color unchanged."),
+            );
+        } else {
+            self.set_text(OUTPUT, "Color dialog cancelled; color unchanged.");
+        }
+        self.availability();
+    }
+    unsafe fn begin_pick(&mut self) {
+        match self.validated_color() {
+            Ok(original) => {
                 self.preview = None;
+                self.picker = Some(PickSession {
+                    original,
+                    hex: self.text(COLOR_HEX),
+                });
+                SetCapture(self.hwnd);
+                if GetCapture() != self.hwnd {
+                    self.picker = None;
+                    self.set_text(OUTPUT, "Cannot capture pointer for screen picker.");
+                    return;
+                }
+                self.availability();
+                self.set_text(OUTPUT, "Screen picker: move to preview; left click accepts. Escape, right click or leaving this page cancels. Alpha is preserved.");
+            }
+            Err(e) => self.set_text(OUTPUT, &format!("Screen picker: {e}")),
+        }
+    }
+    unsafe fn sample_screen(&mut self) {
+        if self.picker.is_none() {
+            return;
+        }
+        let mut point = POINT::default();
+        if GetCursorPos(&mut point).is_err() {
+            self.finish_pick(false);
+            return;
+        }
+        let dc = GetDC(None);
+        if dc.is_invalid() {
+            self.finish_pick(false);
+            return;
+        }
+        let pixel = GetPixel(dc, point.x, point.y);
+        ReleaseDC(None, dc);
+        if pixel.0 == u32::MAX {
+            self.finish_pick(false);
+            return;
+        }
+        let alpha = self.picker.as_ref().unwrap().original[3];
+        self.set_color([
+            pixel.0 as u8,
+            (pixel.0 >> 8) as u8,
+            (pixel.0 >> 16) as u8,
+            alpha,
+        ]);
+    }
+    unsafe fn cancel_local_work(&mut self) -> bool {
+        if self.picker.is_some() {
+            self.finish_pick(false);
+            true
+        } else {
+            self.preview.take().is_some()
+        }
+    }
+    unsafe fn finish_pick(&mut self, accept: bool) {
+        if let Some(session) = self.picker.take() {
+            if GetCapture() == self.hwnd {
+                let _ = ReleaseCapture();
+            }
+            if !accept {
+                self.set_color(session.original);
+                self.set_text(COLOR_HEX, &session.hex);
+            }
+            self.update_dirty();
+            self.availability();
+            self.set_text(
+                OUTPUT,
+                if accept {
+                    "Screen color selected locally; not saved or applied."
+                } else {
+                    "Screen picker cancelled; previous color restored."
+                },
+            );
+        }
+    }
+    unsafe fn preview_tick(&mut self) {
+        if let Some(playback) = &self.preview {
+            match playback
+                .animation
+                .sample(playback.started.elapsed().as_millis().min(u64::MAX as u128) as u64)
+            {
+                Ok((position, done)) => {
+                    SendMessageW(
+                        self.control(PREVIEW_TRACK),
+                        TBM_SETPOS,
+                        Some(WPARAM(1)),
+                        Some(LPARAM(position as isize)),
+                    );
+                    if done {
+                        self.preview = None;
+                    }
+                }
+                Err(e) => {
+                    self.preview = None;
+                    self.set_text(OUTPUT, &e);
+                }
             }
         }
     }
@@ -1258,6 +1747,47 @@ impl Ui {
     }
 }
 
+fn is_form_control(id: u16) -> bool {
+    matches!(
+        id,
+        CENTER
+            | PRIMARY
+            | SECONDARY
+            | BETWEEN
+            | PRIMARY_OFFSET
+            | SECONDARY_OFFSET
+            | ANIMATION
+            | DURATION
+            | POLL
+            | RED
+            | GREEN
+            | BLUE
+            | ALPHA
+            | PRIMARY_OPACITY
+            | SECONDARY_OPACITY
+            | RADIUS
+            | SEGMENTS
+            | MAXIMIZED
+            | BATTERY_ANIMATION
+            | BATTERY_POLL
+            | SKIP1
+            | SKIP2
+            | SKIP3
+            | FULLSCREEN
+            | HIDE_PRIMARY_START
+            | HIDE_SECONDARY_START
+            | HIDE_PRIMARY_TRAY
+            | HIDE_SECONDARY_TRAY
+            | OVERLAP
+            | TOOLBARS
+            | TRAY_ICON
+            | DELAY
+            | MEASUREMENT
+            | CONSOLE
+            | COLOR_HEX
+    )
+}
+
 unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if msg == WM_NCCREATE {
         let create = &*(lp.0 as *const CREATESTRUCTW);
@@ -1280,7 +1810,7 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                     let notification = ((wp.0 >> 16) & 0xffff) as u32;
                     if (NAV..NAV + 9).contains(&id) && notification == BN_CLICKED {
                         ui.show_page(i32::from(id - NAV));
-                    } else if (RADIO..RADIO + 5).contains(&id) && notification == BN_CLICKED {
+                    } else if (RADIO..RADIO + 6).contains(&id) && notification == BN_CLICKED {
                         SendMessageW(
                             ui.control(STYLE),
                             CB_SETCURSEL,
@@ -1288,28 +1818,46 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                             None,
                         );
                         ui.sync_style();
-                        ui.set_text(
-                            OUTPUT,
-                            "Style selected locally. Click Apply to update the taskbar.",
-                        );
-                    } else if id == PREVIEW && notification == BN_CLICKED {
-                        ui.preview = Some(Instant::now());
-                        ui.preview_tick();
-                    } else if (SAVE..=CLOSE).contains(&id) && notification == BN_CLICKED {
+                        ui.edited();
+                    } else if ((SAVE..=PREVIEW_CANCEL).contains(&id) || id == PREVIEW)
+                        && notification == BN_CLICKED
+                    {
                         ui.action(id);
                     } else if id == IDCANCEL.0 as u16 {
-                        let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
-                    } else if (CENTER..=ALPHA).contains(&id)
+                        if !ui.cancel_local_work() {
+                            let _ = PostMessageW(Some(hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+                        }
+                    } else if is_form_control(id)
                         && !ui.populating
                         && (notification == EN_CHANGE
                             || notification == CBN_SELCHANGE
                             || notification == BN_CLICKED)
                     {
-                        ui.set_text(OUTPUT, "Form edited locally. Save settings only persists; Apply/start explicitly changes the runtime.");
-                        ui.sync_sliders();
-                        let _ = InvalidateRect(Some(ui.control(SWATCH)), None, true);
+                        if id == COLOR_HEX {
+                            ui.sync_color_from_hex();
+                        } else if [RED, GREEN, BLUE, ALPHA].contains(&id) {
+                            ui.sync_color_from_rgba();
+                        }
+                        ui.edited();
                     }
                     return LRESULT(0);
+                }
+                WM_MOUSEMOVE if ui.picker.is_some() => {
+                    ui.sample_screen();
+                    return LRESULT(0);
+                }
+                WM_LBUTTONDOWN if ui.picker.is_some() => {
+                    ui.sample_screen();
+                    ui.finish_pick(true);
+                    return LRESULT(0);
+                }
+                WM_RBUTTONDOWN | WM_CANCELMODE | WM_CAPTURECHANGED if ui.picker.is_some() => {
+                    ui.finish_pick(false);
+                    return LRESULT(0);
+                }
+                WM_ACTIVATEAPP if wp.0 == 0 => {
+                    ui.finish_pick(false);
+                    ui.preview = None;
                 }
                 WM_TIMER => {
                     ui.drain();
@@ -1328,11 +1876,8 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                             [RED, GREEN, BLUE, ALPHA][(id - SLIDER) as usize],
                             &value.to_string(),
                         );
-                        ui.set_text(
-                            OUTPUT,
-                            "Color edited locally. Click Apply to update the taskbar.",
-                        );
-                        let _ = InvalidateRect(Some(ui.control(SWATCH)), None, true);
+                        ui.sync_color_from_rgba();
+                        ui.edited();
                     }
                     return LRESULT(0);
                 }
@@ -1411,6 +1956,8 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
                         ui.set_text(OUTPUT, "A requested command is still in progress. Please wait for its bounded completion before closing. Closing does not issue stop or start.");
                         return LRESULT(0);
                     }
+                    ui.finish_pick(false);
+                    ui.preview = None;
                     // Release RefCell borrow before synchronous destruction.
                     drop(ui);
                     let _ = DestroyWindow(hwnd);
@@ -1421,6 +1968,49 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPAR
         }
     }
     DefWindowProcW(hwnd, msg, wp, lp)
+}
+
+// The common dialog runs a nested message loop: never hold RefCell<Ui> across it.
+// Its COLORREF and custom-color buffers are stack owned until it returns.
+unsafe fn service_color_dialog(state: &RefCell<Ui>) {
+    let (hwnd, color, mut custom) = {
+        let ui = state.borrow();
+        if !ui.color_dialog_requested {
+            return;
+        }
+        let Ok(color) = ui.validated_color() else {
+            drop(ui);
+            let mut ui = state.borrow_mut();
+            ui.color_dialog_requested = false;
+            ui.availability();
+            return;
+        };
+        (ui.hwnd, color, ui.custom_colors)
+    };
+    let mut choose = CHOOSECOLORW {
+        lStructSize: std::mem::size_of::<CHOOSECOLORW>() as u32,
+        hwndOwner: hwnd,
+        rgbResult: COLORREF(
+            u32::from(color[0]) | u32::from(color[1]) << 8 | u32::from(color[2]) << 16,
+        ),
+        lpCustColors: custom.as_mut_ptr(),
+        Flags: CC_FULLOPEN | CC_RGBINIT,
+        ..Default::default()
+    };
+    let selected = ChooseColorW(&mut choose).as_bool();
+    let error = if selected {
+        0
+    } else {
+        CommDlgExtendedError().0
+    };
+    let mut ui = state.borrow_mut();
+    let selected = if selected {
+        let rgb = choose.rgbResult.0;
+        Some([rgb as u8, (rgb >> 8) as u8, (rgb >> 16) as u8, color[3]])
+    } else {
+        None
+    };
+    ui.complete_color_dialog(selected, custom, error);
 }
 
 pub fn run(options: Options) -> Result<(), String> {
@@ -1447,19 +2037,26 @@ pub fn run(options: Options) -> Result<(), String> {
     }
 }
 
-unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Result<(), String> {
+fn command_worker<P: Process + Send + 'static>(
+    options: Options,
+    process: P,
+) -> Result<(Sender<Action>, Receiver<Event>), String> {
     let (tx, requests) = mpsc::channel();
     let (events, rx) = mpsc::channel();
-    let worker_options = options.clone();
+    let worker_options = options;
     thread::Builder::new()
         .name("taskbarx-cli".into())
         .spawn(move || {
-            let mut controller = Controller::new(worker_options, SystemProcess::default());
+            let mut controller = Controller::new(worker_options, process);
             loop {
                 match requests.recv_timeout(Duration::from_millis(200)) {
                     Ok(action) => {
                         if events
-                            .send(Event::Done(Box::new(controller.perform(action))))
+                            .send(Event::Done(Box::new(Completion {
+                                result: controller.perform(action),
+                                saved: controller.saved.clone(),
+                                startup: controller.startup.clone(),
+                            })))
                             .is_err()
                         {
                             break;
@@ -1476,11 +2073,21 @@ unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Re
             }
         })
         .map_err(|e| format!("Cannot create engine-command worker: {e}"))?;
+    Ok((tx, rx))
+}
+
+unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Result<(), String> {
+    let (tx, rx) = command_worker(options.clone(), SystemProcess::default())?;
     let state = Box::new(RefCell::new(Ui {
         hwnd: HWND::default(),
         page: 0,
         building_page: -1,
         preview: None,
+        picker: None,
+        color_dialog_requested: false,
+        custom_colors: [COLORREF(0); 16],
+        saved: None,
+        schema_version: 1,
         items: Vec::new(),
         dpi: GetDpiForSystem().max(96),
         font: HFONT::default(),
@@ -1555,6 +2162,13 @@ unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Re
             loop_error = Some("Native message loop failed".into());
             break;
         }
+        // Cancellation wins even when a child edit/button owns keyboard focus.
+        if msg.message == WM_KEYDOWN
+            && msg.wParam.0 == VK_ESCAPE.0 as usize
+            && state.borrow_mut().cancel_local_work()
+        {
+            continue;
+        }
         // Tab, Shift+Tab, arrows, Space, access keys, and Escape work exactly as
         // a dialog. Buttons are not defaulted to Apply (Enter cannot auto-apply).
         if !IsDialogMessageW(hwnd, &msg).as_bool() {
@@ -1569,6 +2183,7 @@ unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Re
                 }
                 previous_focus = focus;
             }
+            service_color_dialog(&state);
             let alert = state.borrow_mut().alert.take();
             if let Some(alert) = alert {
                 // No Rust borrow crosses this nested message loop.
@@ -1596,28 +2211,108 @@ unsafe fn run_window(options: Options, instance: HINSTANCE, class: PCWSTR) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    };
+    use taskbarx_configurator::{process::ProcessReply, protocol::CommandSpec};
 
-    #[test]
-    fn hidden_native_controls_roundtrip_tab_order_dpi_and_local_actions() {
-        // No process worker is created in this test. The receiver below records
-        // requests only; Apply and Stop are NEVER sent to a real engine.
-        unsafe {
+    struct FakeProcess {
+        calls: Arc<Mutex<Vec<CommandSpec>>>,
+        saved: Settings,
+    }
+    impl Process for FakeProcess {
+        fn execute(&mut self, spec: &CommandSpec) -> Result<ProcessReply, String> {
+            self.calls.lock().unwrap().push(spec.clone());
+            let mut reply = ProcessReply {
+                code: Some(0),
+                ..Default::default()
+            };
+            match spec.args[0].to_str().unwrap() {
+                "config" if spec.args[1] == "show" => {
+                    reply.stdout = taskbarx_config::to_json(&self.saved)?.into_bytes()
+                }
+                "config" if spec.args[1] == "import" => {
+                    self.saved = taskbarx_config::from_json(
+                        std::str::from_utf8(spec.stdin.as_ref().unwrap()).unwrap(),
+                    )?
+                }
+                "stop" => {}
+                "run" => {
+                    reply.code = None;
+                    reply.pid = Some(42);
+                }
+                "startup" => {
+                    reply.stdout = serde_json::to_vec(&taskbarx_shell::StartupStatus {
+                        registered: false,
+                        enabled: false,
+                        owned: false,
+                        task_name: "Fixture only".into(),
+                        launch: None,
+                        delay_secs: None,
+                        warnings: Vec::new(),
+                    })
+                    .unwrap()
+                }
+                "shortcut" => {
+                    reply.stdout =
+                        serde_json::json!({"ok":true,"path":PathBuf::from(&spec.args[3])})
+                            .to_string()
+                            .into_bytes()
+                }
+                "start-menu" => {}
+                other => panic!("unexpected fixture command: {other}"),
+            }
+            Ok(reply)
+        }
+    }
+    // Owns the hidden HWND AND its callback allocation, even on assertion failure.
+    // Every command goes through the same off-thread worker as production with a
+    // fake process. No taskbar/desktop window is found, moved, hidden or sampled.
+    struct Fixture {
+        state: Box<RefCell<Ui>>,
+        class: Vec<u16>,
+        instance: HINSTANCE,
+        calls: Arc<Mutex<Vec<CommandSpec>>>,
+    }
+    impl Fixture {
+        unsafe fn new() -> Self {
+            static SERIAL: AtomicU64 = AtomicU64::new(0);
             let instance = HINSTANCE(GetModuleHandleW(None).unwrap().0);
-            let class = w!("TaskbarX.Configurator.ControlTest");
+            let class = wide(&format!(
+                "TaskbarX.Configurator.HiddenFixture.{}",
+                SERIAL.fetch_add(1, Ordering::Relaxed)
+            ));
             let wc = WNDCLASSW {
                 lpfnWndProc: Some(window_proc),
                 hInstance: instance,
-                lpszClassName: class,
+                lpszClassName: PCWSTR(class.as_ptr()),
                 ..Default::default()
             };
             assert_ne!(RegisterClassW(&wc), 0);
-            let (tx, requests) = mpsc::channel();
-            let (_events, rx) = mpsc::channel();
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let options = Options {
+                engine: std::env::temp_dir().join("never-executed \u{6d4b}\u{8bd5}/taskbarx.exe"),
+                config: Some(std::env::temp_dir().join("fixture config \u{989c}\u{8272}.json")),
+            };
+            let (tx, rx) = command_worker(
+                options.clone(),
+                FakeProcess {
+                    calls: calls.clone(),
+                    saved: Settings::default(),
+                },
+            )
+            .unwrap();
             let state = Box::new(RefCell::new(Ui {
                 hwnd: HWND::default(),
                 page: 0,
                 building_page: -1,
                 preview: None,
+                picker: None,
+                color_dialog_requested: false,
+                custom_colors: [COLORREF(0); 16],
+                saved: None,
+                schema_version: 1,
                 items: vec![],
                 dpi: 96,
                 font: HFONT::default(),
@@ -1632,8 +2327,8 @@ mod tests {
             }));
             let hwnd = CreateWindowExW(
                 WS_EX_CONTROLPARENT,
-                class,
-                w!("Hidden control test"),
+                PCWSTR(class.as_ptr()),
+                w!("Hidden controls - fake worker"),
                 WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_HSCROLL,
                 0,
                 0,
@@ -1645,49 +2340,283 @@ mod tests {
                 Some((&*state as *const RefCell<Ui>).cast()),
             )
             .unwrap();
+            let fixture = Self {
+                state,
+                class,
+                instance,
+                calls,
+            };
             {
-                let mut ui = state.borrow_mut();
+                let mut ui = fixture.state.borrow_mut();
                 ui.hwnd = hwnd;
-                let options = Options {
-                    engine: std::env::temp_dir().join("never-executed-test-engine.exe"),
-                    config: None,
-                };
                 ui.build(&options).unwrap();
-                // Check every page, including hidden controls, for encoding damage.
-                for item in &ui.items {
-                    let mut text = vec![0u16; GetWindowTextLengthW(item.hwnd) as usize + 1];
-                    let len = GetWindowTextW(item.hwnd, &mut text);
-                    let text = String::from_utf16_lossy(&text[..len as usize]);
-                    assert!(
-                        !text.contains('?') && !text.contains('\u{fffd}'),
-                        "corrupted UI text: {text}"
-                    );
+                ui.start(Action::Initialize);
+            }
+            fixture.wait();
+            fixture
+        }
+        unsafe fn wait(&self) {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                let mut ui = self.state.borrow_mut();
+                ui.drain();
+                if !ui.busy {
+                    break;
                 }
-
-                assert!(ui.read_form().settings().is_err());
-                for animation in ANIMATIONS {
-                    for style in STYLES {
-                        let form = Form {
-                            animation: animation.into(),
-                            style: style.into(),
-                            primary_offset: "-134".into(),
-                            secondary_offset: "-99".into(),
-                            color: ["255".into(), "0".into(), "254".into(), "0".into()],
-                            ..Form::default()
-                        };
-                        ui.fill(&form);
-                        assert_eq!(ui.read_form(), form);
+                assert!(Instant::now() < deadline, "fake worker deadline");
+                drop(ui);
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+        fn count(&self) -> usize {
+            self.calls.lock().unwrap().len()
+        }
+    }
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            unsafe {
+                let hwnd = self.state.borrow().hwnd;
+                if IsWindow(Some(hwnd)).as_bool() {
+                    let _ = DestroyWindow(hwnd);
+                }
+                let _ = UnregisterClassW(PCWSTR(self.class.as_ptr()), Some(self.instance));
+                // Remove only our thread's WM_QUIT from this fixture's destruction.
+                let mut message = MSG::default();
+                let _ = PeekMessageW(&mut message, None, WM_QUIT, WM_QUIT, PM_REMOVE);
+            }
+        }
+    }
+    fn all_settings() -> Settings {
+        taskbarx_config::from_json(
+            r#"{
+            "center":false,"primary":false,"secondary":false,"center_between":true,
+            "primary_offset":-134,"secondary_offset":99,"animation":"linear","animation_ms":0,
+            "poll_ms":53,"style":"transparent-gradient","color":[255,0,254,7],
+            "primary_opacity":0,"secondary_opacity":100,"corner_radius":10000,
+            "taskbar_segments":true,"default_style_on_maximized":true,"battery_animation":"none",
+            "battery_poll_ms":10000,"skip_resolutions":[1,1920,65535],"pause_on_fullscreen":true,
+            "hide_primary_start":true,"hide_secondary_start":true,"hide_primary_tray":true,
+            "hide_secondary_tray":true,"revert_on_tray_overlap":true,"toolbar_compensation":false,
+            "tray_icon":true,"startup_delay_secs":86400,"measurement":"uia","show_console":true
+        }"#,
+        )
+        .unwrap()
+    }
+    #[test]
+    fn hidden_controls_bind_every_field_preserve_edits_and_roundtrip_saved_json() {
+        unsafe {
+            let fixture = Fixture::new();
+            assert_eq!(fixture.count(), 1); // config show ONLY, no startup registration
+            {
+                let mut ui = fixture.state.borrow_mut();
+                let form = Form::from(all_settings());
+                ui.fill(&form);
+                assert_eq!(ui.read_form(), form);
+                assert_eq!(ui.read_form().settings().unwrap(), all_settings());
+                let full = serde_json::to_value(all_settings()).unwrap();
+                let defaults = serde_json::to_value(Settings::default()).unwrap();
+                // Individually flip every field, especially the four independent
+                // Start/tray flags. An all-true fixture alone misses swapped IDs.
+                for key in full.as_object().unwrap().keys() {
+                    let mut value = full.clone();
+                    value[key] = defaults[key].clone();
+                    let settings = taskbarx_config::from_json(&value.to_string()).unwrap();
+                    ui.fill(&settings.clone().into());
+                    assert_eq!(ui.read_form().settings().unwrap(), settings, "{key}");
+                }
+                for &animation in ANIMATIONS {
+                    for &style in STYLES {
+                        for battery in [String::new(), animation.into()] {
+                            let form = Form {
+                                animation: animation.into(),
+                                battery_animation: battery,
+                                style: style.into(),
+                                ..form.clone()
+                            };
+                            ui.fill(&form);
+                            assert_eq!(ui.read_form(), form);
+                            let settings = ui.read_form().settings().unwrap();
+                            let json = taskbarx_config::to_json(&settings).unwrap();
+                            assert_eq!(taskbarx_config::from_json(&json).unwrap(), settings);
+                        }
                     }
                 }
-                ui.availability();
-                for dpi in [96, 144, 192] {
-                    ui.dpi = dpi;
-                    ui.replace_font().unwrap();
-                    ui.layout();
-                    let mut rect = RECT::default();
-                    GetWindowRect(ui.control(RED), &mut rect).unwrap();
-                    assert_eq!(rect.right - rect.left, px(70, dpi));
+                for opacity in [None, Some(0), Some(100)] {
+                    for backend in MEASUREMENT_BACKENDS {
+                        let settings = Settings {
+                            primary_opacity: opacity,
+                            secondary_opacity: opacity,
+                            measurement: (*backend).into(),
+                            ..all_settings()
+                        };
+                        ui.fill(&settings.clone().into());
+                        assert_eq!(ui.read_form().settings().unwrap(), settings);
+                    }
                 }
+                ui.fill(&form);
+                ui.saved = Some(all_settings());
+                ui.update_dirty();
+                assert!(ui.text(DIRTY).starts_with("Form matches"));
+                ui.set_text(PRIMARY_OFFSET, "-99");
+                ui.edited();
+                assert!(ui.text(DIRTY).starts_with("UNSAVED"));
+                for page in 0..9 {
+                    ui.show_page(page);
+                }
+                let mut expected = all_settings();
+                expected.primary_offset = -99;
+                assert_eq!(ui.read_form().settings().unwrap(), expected);
+                assert_eq!(fixture.count(), 1); // all editing/page navigation is local
+                ui.action(SAVE);
+            }
+            fixture.wait();
+            let saved = fixture.state.borrow().read_form().settings().unwrap();
+            assert_eq!(fixture.state.borrow().saved, Some(saved.clone()));
+            assert!(fixture
+                .state
+                .borrow()
+                .text(DIRTY)
+                .starts_with("Form matches"));
+            fixture.state.borrow_mut().action(RESET);
+            fixture.wait();
+            assert_eq!(fixture.state.borrow().read_form(), Form::default());
+            assert!(fixture.state.borrow().text(DIRTY).starts_with("UNSAVED"));
+            fixture.state.borrow_mut().action(RELOAD);
+            fixture.wait();
+            assert_eq!(
+                fixture.state.borrow().read_form().settings().unwrap(),
+                saved
+            );
+            let calls = fixture.calls.lock().unwrap();
+            assert_eq!(
+                calls.iter().map(CommandSpec::label).collect::<Vec<_>>(),
+                ["config show", "config import --stdin", "config show"]
+            );
+            assert_eq!(
+                taskbarx_config::from_json(
+                    std::str::from_utf8(calls[1].stdin.as_ref().unwrap()).unwrap()
+                )
+                .unwrap(),
+                saved
+            );
+        }
+    }
+
+    #[test]
+    fn hidden_color_preview_cancel_validation_and_navigation_never_dispatch_commands() {
+        unsafe {
+            let fixture = Fixture::new();
+            let mut ui = fixture.state.borrow_mut();
+            ui.fill(&all_settings().into());
+            ui.set_text(COLOR_HEX, "#12aBEf");
+            ui.sync_color_from_hex();
+            assert_eq!(ui.read_form().rgba().unwrap(), [18, 171, 239, 7]);
+            ui.set_text(ALPHA, "incomplete");
+            ui.set_text(COLOR_HEX, "#010203FE");
+            ui.sync_color_from_hex();
+            assert_eq!(ui.read_form().rgba().unwrap(), [1, 2, 3, 254]);
+            ui.set_text(RED, "99");
+            ui.sync_color_from_rgba();
+            assert_eq!(ui.text(COLOR_HEX), "#630203FE");
+            for invalid in ["#", "#XYZ000", "#1234567", "123456", "#\u{e9}12345"] {
+                ui.set_text(COLOR_HEX, invalid);
+                ui.sync_color_from_hex();
+                ui.action(SAVE);
+                assert!(ui.alert.take().unwrap().contains("color_hex"));
+                assert_eq!(ui.read_form().rgba().unwrap(), [99, 2, 3, 254]);
+                assert!(!ui.busy);
+            }
+            ui.sync_color_from_rgba();
+            let previous = ui.read_form();
+            let hex = ui.text(COLOR_HEX);
+            // Dialog and screen samples are injected; never open a real dialog or
+            // capture/sample the user's desktop during tests.
+            ui.color_dialog_requested = true;
+            ui.complete_color_dialog(None, [COLORREF(0); 16], 0);
+            assert_eq!(ui.read_form(), previous);
+            ui.picker = Some(PickSession {
+                original: previous.rgba().unwrap(),
+                hex: hex.clone(),
+            });
+            ui.set_color([40, 50, 60, 254]);
+            ui.finish_pick(false);
+            assert_eq!(ui.read_form(), previous);
+            assert_eq!(ui.text(COLOR_HEX), hex);
+            ui.picker = Some(PickSession {
+                original: previous.rgba().unwrap(),
+                hex,
+            });
+            ui.set_color([11, 22, 33, 254]);
+            ui.show_page(1); // leaving Style cancels
+            assert_eq!(ui.read_form(), previous);
+            ui.picker = Some(PickSession {
+                original: previous.rgba().unwrap(),
+                hex: ui.text(COLOR_HEX),
+            });
+            ui.set_color([30, 40, 50, 254]);
+            let hwnd = ui.hwnd;
+            drop(ui);
+            SendMessageW(hwnd, WM_COMMAND, Some(WPARAM(IDCANCEL.0 as usize)), None);
+            let mut ui = fixture.state.borrow_mut();
+            assert!(ui.picker.is_none());
+            assert_eq!(ui.read_form(), previous);
+            assert!(IsWindow(Some(hwnd)).as_bool()); // Escape did not close the fixture
+            ui.complete_color_dialog(Some([10, 20, 30, 254]), [COLORREF(0); 16], 0);
+            assert_eq!(ui.read_form().rgba().unwrap(), [10, 20, 30, 254]);
+            ui.action(ANIMATION_NEXT);
+            ui.action(ANIMATION_PREV);
+            assert_eq!(ui.read_form().animation, "linear");
+            ui.action(BATTERY_PREV);
+            assert_eq!(ui.read_form().battery_animation, "");
+            ui.action(BATTERY_NEXT);
+            assert_eq!(ui.read_form().battery_animation, "none");
+            ui.action(PREVIEW_BATTERY);
+            assert!(ui.preview.is_none());
+            assert_eq!(
+                SendMessageW(ui.control(PREVIEW_TRACK), TBM_GETPOS, None, None).0,
+                1000
+            );
+            ui.set_text(DURATION, "10000");
+            ui.action(PREVIEW);
+            assert!(ui.preview.is_some());
+            ui.action(PREVIEW_CANCEL);
+            assert!(ui.preview.is_none());
+            ui.action(PREVIEW);
+            ui.show_page(2);
+            assert!(ui.preview.is_none());
+            ui.set_text(PRIMARY_OFFSET, "-");
+            ui.action(APPLY);
+            assert!(ui.alert.take().unwrap().contains("primary_offset"));
+            ui.set_text(DURATION, "10001");
+            ui.action(PREVIEW);
+            assert!(ui.preview.is_none());
+            assert_eq!(fixture.count(), 1);
+        }
+    }
+
+    #[test]
+    fn hidden_dpi_pages_keyboard_order_and_deferred_child_repaint() {
+        unsafe {
+            let fixture = Fixture::new();
+            let mut ui = fixture.state.borrow_mut();
+            for item in &ui.items {
+                let mut text = vec![0u16; GetWindowTextLengthW(item.hwnd) as usize + 1];
+                let len = GetWindowTextW(item.hwnd, &mut text);
+                let text = String::from_utf16_lossy(&text[..len as usize]);
+                assert!(
+                    !text.contains('\u{fffd}')
+                        && !text.contains('\u{e2}')
+                        && !text.contains('\u{c3}'),
+                    "damaged UI text: {text}"
+                );
+            }
+            for dpi in [96, 144, 192] {
+                ui.dpi = dpi;
+                ui.replace_font().unwrap();
+                ui.layout();
+                let mut rect = RECT::default();
+                GetWindowRect(ui.control(RED), &mut rect).unwrap();
+                assert_eq!(rect.right - rect.left, px(70, dpi));
                 for page in 0..9 {
                     ui.show_page(page);
                     assert_eq!(ui.text(TITLE), PAGES[page as usize]);
@@ -1697,40 +2626,95 @@ mod tests {
                         assert_eq!(
                             visible,
                             item.page == -1 || item.page == page,
-                            "page {page}, control {}",
+                            "page {page}, id {}",
                             item.id
                         );
                     }
-                    // Switching tabs is entirely local, never issues a command.
-                    assert!(requests.try_recv().is_err());
                 }
-                ui.show_page(0);
-                ui.sync_sliders();
-                assert_eq!(
-                    SendMessageW(ui.control(SLIDER), TBM_GETPOS, None, None).0,
-                    255
-                );
-                ui.preview = Some(Instant::now());
-                ui.preview_tick();
-                assert!(requests.try_recv().is_err());
-                // The native Save button submits only Save; core contract tests
-                // then verify that this emits only config import --stdin.
-                ui.action(SAVE);
-                assert!(matches!(requests.try_recv().unwrap(), Action::Save(_)));
-                ui.busy = false;
-                ui.action(RESET);
-                assert!(matches!(requests.try_recv().unwrap(), Action::Reset));
-                ui.busy = false;
-                ui.set_text(PRIMARY_OFFSET, "-");
-                ui.action(APPLY);
-                assert!(ui.alert.as_ref().unwrap().contains("primary_offset"));
-                assert!(requests.try_recv().is_err());
-                assert!(!ui.busy);
             }
-            DestroyWindow(hwnd).unwrap();
-            drop(state);
-            assert!(requests.try_recv().is_err());
-            UnregisterClassW(class, Some(instance)).unwrap();
+            ui.dpi = 96;
+            ui.layout();
+            ui.show_page(0);
+            ui.availability();
+            // The indicator is decorative and remains disabled after busy cycles.
+            for busy in [true, false] {
+                ui.busy = busy;
+                ui.availability();
+                assert!(
+                    !windows::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled(
+                        ui.control(PREVIEW_TRACK)
+                    )
+                    .as_bool()
+                );
+            }
+            assert_ne!(
+                GetNextDlgTabItem(ui.hwnd, Some(ui.control(NAV)), false).unwrap(),
+                HWND::default()
+            );
+            assert!(!IsWindowVisible(ui.hwnd).as_bool()); // test never showed a window
+                                                          // Windows suppresses update regions for hidden parents. Record the
+                                                          // exact flags passed to the real API instead: every child must be
+                                                          // invalidated, with no synchronous paint while Ui is borrowed.
+            LAYOUT_REPAINT_FLAGS.with(|record| record.set(0));
+            ui.layout();
+            LAYOUT_REPAINT_FLAGS.with(|record| {
+                assert_eq!(
+                    record.get(),
+                    (RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN).0
+                );
+                assert_eq!(record.get() & (RDW_UPDATENOW | RDW_ERASENOW).0, 0);
+            });
+            assert_eq!(fixture.count(), 1);
+        }
+    }
+
+    #[test]
+    fn hidden_explicit_actions_use_fake_worker_without_overwriting_unsaved_form() {
+        unsafe {
+            let fixture = Fixture::new();
+            {
+                let mut ui = fixture.state.borrow_mut();
+                ui.fill(&all_settings().into());
+                ui.set_text(DELAY, "19");
+                ui.set_text(POLL, "incomplete");
+                ui.edited();
+                ui.action(STARTUP_ENABLE);
+            }
+            fixture.wait();
+            assert_eq!(fixture.state.borrow().text(POLL), "incomplete");
+            assert_eq!(fixture.state.borrow().text(DELAY), "19");
+            assert!(fixture.state.borrow().text(DIRTY).starts_with("UNSAVED"));
+            fixture.state.borrow_mut().action(RESTART);
+            fixture.wait();
+            fixture.state.borrow_mut().action(STARTUP_REFRESH);
+            fixture.wait();
+            fixture.state.borrow_mut().action(REMOVE_STARTUP);
+            fixture.wait();
+            fixture.state.borrow_mut().action(REMOVE_STOP);
+            fixture.wait();
+            let path = std::env::temp_dir().join("fixture Start \u{989c}\u{8272}.lnk");
+            {
+                let mut ui = fixture.state.borrow_mut();
+                ui.set_text(SHORTCUT_PATH, path.to_str().unwrap());
+                ui.action(SHORTCUT_CREATE);
+            }
+            fixture.wait();
+            fixture.state.borrow_mut().action(SHORTCUT_REMOVE);
+            fixture.wait();
+            fixture.state.borrow_mut().action(OPEN_START);
+            fixture.wait();
+            let calls = fixture.calls.lock().unwrap();
+            assert!(calls.iter().all(|s| s.stdin.is_none()));
+            assert_eq!(
+                calls[1].args[0..5],
+                ["startup", "enable", "--delay-secs", "19", "--json"].map(std::ffi::OsString::from)
+            );
+            assert_eq!(calls[2].label(), "stop --timeout-ms 5000");
+            assert_eq!(calls[3].label(), "run");
+            assert_eq!(calls[7].args[3], path.as_os_str());
+            assert_eq!(calls[8].args[3], path.as_os_str());
+            assert_eq!(calls[9].label(), "start-menu");
+            assert_eq!(fixture.state.borrow().text(POLL), "incomplete");
         }
     }
 }

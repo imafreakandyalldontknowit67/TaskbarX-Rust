@@ -14,7 +14,9 @@ mod persistence;
 mod settings;
 
 pub use persistence::{default_path, load, save_atomic};
-pub use settings::{from_json, to_json, Settings, EASING_NAMES, SUPPORTED_STYLES};
+pub use settings::{
+    from_json, to_json, Settings, EASING_NAMES, MEASUREMENT_BACKENDS, SUPPORTED_STYLES,
+};
 
 #[cfg(test)]
 #[path = "../tests/support/mod.rs"]

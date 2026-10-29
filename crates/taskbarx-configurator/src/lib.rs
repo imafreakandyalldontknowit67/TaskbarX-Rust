@@ -1,4 +1,6 @@
-//! The form and CLI protocol are independent of Win32 rendering and sibling crates.
+//! Native-independent form adapters and injectable CLI protocol.
+//! The only persisted settings contract lives in taskbarx-config; shell status
+//! DTOs and display-only command formatting come from taskbarx-shell.
 pub mod controller;
 pub mod process;
 pub mod protocol;
