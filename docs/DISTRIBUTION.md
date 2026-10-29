@@ -1,33 +1,33 @@
 # Distribution and package selection
 
-TaskbarX-Rust is an **independent native Rust rewrite** of Chris Andriessen's TaskbarX, not an official upstream release. The initial release is unsigned; keep Windows security checks enabled. This document describes the v0.1.1 distributions.
+TaskbarX-Rust is an **independent native Rust rewrite** of Chris Andriessen's TaskbarX, not an official upstream release. This document describes the planned unsigned v0.1.2 packages. **Verification is pending; no v0.1.2 build, test or availability claim is made.** Keep Windows security checks enabled.
 
 ## Choose a package
 
-**Portable ZIPs are the primary choice.** Downloads require access while the repository is private.
+**Portable ZIPs are the primary choice.** These are prospective asset links for the [planned v0.1.2 release](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.2), not available downloads.
 
 | Architecture | Portable ZIP | Optional Rainmeter launcher |
 | --- | --- | --- |
-| x64 (recommended for 64-bit Intel/AMD Windows) | [Download ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x64.zip) | [Download .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x64.rmskin) |
-| x86 (32-bit; limited validation) | [Download ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x86.zip) | [Download .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x86.rmskin) |
+| x64 (64-bit Intel/AMD Windows) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.rmskin) |
+| x86 (32-bit; limited historical validation) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.rmskin) |
 
-**Windows 10 classic taskbar only.** x64 passed native build/test checks. x86 passed build/tests and read-only detection under WOW64 on Windows 10 x64; native 32-bit Windows and live effects were not tested. ARM64 is unavailable because its Microsoft build tools are missing. No ARM32 or neutral/AnyCPU build is provided.
+**Windows 10 classic taskbar only; Windows 11 is unsupported.** ARM64 is unavailable and unvalidated. No ARM32 or neutral/AnyCPU build is provided. Historical x64 and x86 evidence is summarized below.
 
 GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives are source, not ready-to-run application packages. They are distinct from uploaded assets and local developer evidence ZIPs.
 
 ## Architecture and verification
 
-These are four separate questions: **can the packager handle the architecture, did the application compile, what runtime behavior was verified, and was an asset uploaded?** A filename or PE header alone cannot answer all four.
+Packaging support, compilation, runtime verification and download availability are separate. A filename or PE header alone does not establish any of the latter three. **The results below are historical v0.1.1 evidence, not v0.1.2 verification.**
 
-| Architecture / PE Machine | Published packages | Build/runtime evidence |
+| Architecture / PE Machine | Packaging support | Historical build/runtime evidence |
 | --- | --- | --- |
 | x64 / `0x8664` | ZIP and optional `.rmskin` | Native workspace tests, strict Clippy, debug/release builds and read-only detection passed |
 | x86 / `0x014c` | ZIP and optional `.rmskin` | Real x86 build, tests/Clippy and read-only detection passed under WOW64; native 32-bit Windows and live effects untested |
-| ARM64 / `0xAA64` | None | Link stage blocked by missing Microsoft ARM64 tools; no runtime testing |
+| ARM64 / `0xAA64` | ZIP format only; no available binary | No completed build or runtime validation |
 
-See [v0.1.1 build evidence](BUILD-v0.1.1.md). Both architectures statically link the MSVC CRT; imports were checked to exclude separate VC runtime DLL dependencies. Windows system DLLs are still required.
+See [v0.1.1 build evidence](BUILD-v0.1.1.md). Those x64 and x86 binaries statically linked the MSVC CRT; imports were checked to exclude separate VC runtime DLL dependencies. Windows system DLLs are still required.
 
-Existing tested scope is **native Windows 10 x64 with the classic Explorer taskbar**, not comprehensive feature certification. Historical checks include pure/fake tests and read-only diagnostics. A separate startup repair verified Enable/update and status, including the account-name-to-SID fix, with a six-second delay. **Actual logon launch and most visual effects have not been live-tested.** Live positioning/restoration, visual parity, performance, real shortcuts/pinning and tray interaction are not established by those checks. See [user-guide evidence](USER-GUIDE.md#compatibility-and-evidence) and [testing boundaries](TESTING.md).
+Historical runtime checks used **Windows 10 x64 with the classic Explorer taskbar**, with x86 running under WOW64; native 32-bit Windows remains untested. A separate startup repair verified Enable/update and status, including the account-name-to-SID fix, with a six-second delay. **Actual logon launch and most visual effects have not been live-tested.** Live positioning/restoration, visual parity, performance, real shortcuts/pinning and tray interaction are not established by those checks. See [user-guide evidence](USER-GUIDE.md#compatibility-and-evidence) and [testing boundaries](TESTING.md).
 
 Modern Windows 11 taskbars remain **unsupported**. Shell patching and elevation are not promised workarounds. Appearance APIs remain build/theme dependent. Packaging does not broaden operating-system support, and no live Rainmeter installation test is established here.
 
@@ -49,7 +49,7 @@ docs/
 
 This is the complete portable payload contract. `README.txt` is a concise package-specific guide, **not the repository README renamed or copied**. Only `docs/licenses/` is bundled from `docs/`; the repository README, user guide, release notes and this distribution document stay in the repository. Their presence is not required inside a package. The sample is `settings.sample.json` at the payload root; `docs/settings.sample.json` remains correct only for a source checkout.
 
-Excluded: the source tree and build scripts; developer evidence; private diagnostics, logs, dependency inventories and build metadata; artwork and icons; upstream EXEs, .NET DLLs and their resource directories. Links in retained notices to excluded repository documents require repository access; they do not imply those documents are bundled.
+Excluded: source and build scripts; local diagnostics, logs, dependency inventories and build metadata; artwork and icons; upstream EXEs, .NET DLLs and their resource directories. Links in retained notices refer to repository documents, not bundled files.
 
 ## Portable ZIP workflow
 
@@ -92,45 +92,42 @@ This also applies before replacing/removing a Rainmeter skin or relocating its `
 
 ## Offline packaging and fixture checks
 
-`scripts/package-distribution.ps1` has three mandatory arguments: `-BinaryDirectory`, `-Architecture x64|x86|arm64` and `-OutputDirectory`. Optional `-Version` defaults to `0.1.1`. It consumes an **already-built matching pair** named `taskbarx.exe` and `taskbarx-configurator.exe`, checks their actual PE Machine values against the selected architecture, and packages offline **without running either executable**. It requires a nonexistent or empty output directory. It is not a compiler, runtime test, signer or publisher.
+On PowerShell 5.1+, `scripts/package-distribution.ps1` has three mandatory arguments: `-BinaryDirectory`, `-Architecture x64|x86|arm64` and `-OutputDirectory`. It consumes an **already-built matching pair** named `taskbarx.exe` and `taskbarx-configurator.exe`, checks their actual PE Machine values against the selected architecture, and packages offline **without running either executable**. It is not a compiler, runtime test, signer or publisher.
 
-Illustrative commands from a source checkout once the packaging scripts are integrated; replace the placeholder paths with reviewed prebuilt pairs and fresh outputs. Run only the architecture commands for which real matching binaries are available:
+Output must be nonexistent or empty, including hidden entries, and must not overlap the binary directory. Reparse points and reparse-point ancestors are rejected. Files are created exclusively; existing output is not overwritten, and partial archives are retained on failure.
+
+The script's optional `-Version` currently defaults to `0.1.1`; the examples explicitly select `0.1.2`. This changes archive labels, not executable versions. The source versions, matching binaries and intended source tag must agree before packaging.
+
+Illustrative commands from a source checkout; replace the placeholder paths with verified v0.1.2 pairs and fresh outputs. These examples do not establish that those binaries exist:
 
 ```powershell
 powershell.exe -NoProfile -File .\scripts\package-distribution.ps1 `
   -BinaryDirectory 'C:\path\to\prebuilt\x64' -Architecture x64 `
-  -OutputDirectory 'C:\path\to\fresh-output\x64' -Version 0.1.1
+  -OutputDirectory 'C:\path\to\fresh-output\x64' -Version 0.1.2
 powershell.exe -NoProfile -File .\scripts\package-distribution.ps1 `
   -BinaryDirectory 'C:\path\to\prebuilt\x86' -Architecture x86 `
-  -OutputDirectory 'C:\path\to\fresh-output\x86' -Version 0.1.1
-powershell.exe -NoProfile -File .\scripts\package-distribution.ps1 `
-  -BinaryDirectory 'C:\path\to\prebuilt\arm64' -Architecture arm64 `
-  -OutputDirectory 'C:\path\to\fresh-output\arm64' -Version 0.1.1
+  -OutputDirectory 'C:\path\to\fresh-output\x86' -Version 0.1.2
 
 # Archive-structure fixtures only, not an application build or runtime test:
 powershell.exe -NoProfile -File .\scripts\test-distribution.ps1
 ```
 
-`scripts/test-distribution.ps1` uses **inert fake PE fixtures and never launches the app**. Passing it is archive-structure evidence, not a successful application build, working native binary or runtime verification. Never publish its fixtures. These command examples are not executed-test results and do not establish that the proposed assets exist.
+`scripts/test-distribution.ps1` uses **inert fake PE fixtures and never launches the app**. Passing it is archive-structure evidence, not an application build or runtime verification; fixtures are not distribution binaries. ARM64 ZIP construction is supported by the packager, but no ARM64 binary or runtime validation is available.
 
 ## Separate local build and verification workflows
 
-This repository is a native Rust/Cargo workspace, with no `package.json` or npm build. The existing `scripts/verify.ps1` and `scripts/release.ps1` are **x64-oriented local workflows**, not general cross-architecture distribution packagers. They require the native x64 MSVC toolchain and locked Cargo gates. Their desktop probe is read-only `diagnose --json`; they do not apply the engine, launch the GUI or test real startup registration.
+This repository is a Rust 2021 Cargo workspace. `scripts/verify.ps1` and `scripts/release.ps1` are **x64-oriented local workflows**, not general cross-architecture distribution packagers. They require the native x64 MSVC toolchain and locked Cargo checks. Their desktop probe is read-only `diagnose --json`; they do not apply the engine, launch the GUI or test real startup registration.
 
-The existing release workflow copies broad documentation and local verification/build evidence into its candidate ZIP, including potentially private paths, diagnostics and metadata. **Do not upload its output unchanged or bulk-upload a `dist/` directory.** `scripts/package-preview.ps1` is an older x64-oriented repackager of an explicitly supplied checksummed candidate; it has a different payload/name and is not the architecture distribution contract above. Keep developer evidence private and package only reviewed binaries and the allowlisted payload. See [local build instructions](USER-GUIDE.md#build-verify-and-package-locally).
+The local release workflow creates an **evidence package**, with broad documentation, local paths, diagnostics and build metadata. It is not a distribution archive. `scripts/package-preview.ps1` is an older x64-oriented repackager of a checksummed local candidate with a different payload/name. Use `package-distribution.ps1` for the allowlisted ZIP/Rainmeter layout above and retain build evidence separately. See [local build instructions](USER-GUIDE.md#build-verify-and-package-locally) and the [validation checklist](INTEGRATION.md).
 
-## Publication gates (root/release owner only)
+## Package integrity
 
-Root/release owner owns builds, actual asset selection and publication. Before any upload:
+Retain the source revision, compiler-reported CLI/GUI artifacts and hashes for each architecture. Inspect archive entries against the layouts above and verify that embedded binaries match the supplied pair. PE checks establish declared architecture, not build provenance; x64 evidence does not validate x86 or ARM64.
 
-1. Establish the exact source revision, compiler-reported artifacts, matching CLI/GUI pair and hashes for each architecture selected. PE Machine checks establish architecture, not provenance or successful compilation. Never substitute upstream binaries or fake fixtures.
-2. Match archive versions to the actual binaries and source tag. All workspace crates and the configurator are version `0.1.1`; archive labels do not rewrite executable versions. The published v0.1.0 tag is unchanged.
-3. Retain real build/test evidence separately for each selected architecture. Keep compilation, fixture tests and authorized live runtime tests distinct. Do not transfer x64 evidence to x86/ARM64 or infer live Rainmeter behavior; withhold an asset or label its candidate/unverified scope honestly.
-4. Inspect the actual archives against the exact names/layouts above and review licenses/notices for the resolved dependencies. Exclude all private evidence, artwork and unrelated material. Preserve `LICENSE`, `THIRD_PARTY_NOTICES.md` and `docs/licenses/`; inventories/checksums are not license clearance, signatures or authenticity guarantees.
-5. Select only reviewed assets, retain unsigned/security and compatibility warnings, and confirm actual attachments on the release page after any separately authorized publication. Packaging does not upload, push, change tags or change repository visibility. No documentation table or historical build establishes availability.
+Keep `LICENSE`, `THIRD_PARTY_NOTICES.md` and applicable `docs/licenses/` texts with the payload. Review notices against the resolved dependencies. Checksums detect byte differences; they are not signatures or license-compliance certification. Packaging preserves executable bytes, including any embedded compiler paths, which require separate build review.
 
 ## Why the layout differs from upstream
 
 Upstream-like architecture and Rainmeter choices do not require upstream .NET internals. This native Rust rewrite does not need upstream ModernWPF, TaskScheduler or Emoji.Wpf DLLs or their resource directories; upstream binaries must never be relabeled as Rust builds. Actual dependencies are determined by Cargo, and this does **not** imply every system dependency is statically linked.
 
-Preserve Chris Andriessen's attribution and Copyright (c) 2021 under the [MIT license](../LICENSE), plus [third-party notices](../THIRD_PARTY_NOTICES.md) and [dependency license texts](licenses/README.md). Repository artwork depicts upstream, not this Rust build, and is not bundled; see [artwork provenance](assets/README.md). Neither the project nor its package format implies upstream, Rainmeter, Rust project or Rust Foundation endorsement.
+Preserve Chris Andriessen's attribution and Copyright (c) 2021 under the [MIT license](../LICENSE), plus [third-party notices](../THIRD_PARTY_NOTICES.md) and [dependency license texts](licenses/README.md). The repository banner is an original AI-generated conceptual illustration, not an application screenshot or upstream-derived artwork, and is not bundled; see [artwork provenance](assets/README.md). Neither the project nor its package format implies upstream, Rainmeter, Rust project or Rust Foundation endorsement.

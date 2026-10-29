@@ -1,26 +1,17 @@
-## Startup verification hotfix (2026-10-29)
-
-Commit `ac69090` resolves account names returned by Task Scheduler to SIDs before
-ownership comparison. Windows returned a bare username for the principal and a
-DOMAIN\username trigger even though registration XML specified SIDs. The old
-comparison incorrectly reported a successful registration as foreign.
-
-After the fix: 30 shell tests, strict shell Clippy, and the locked release workspace
-build passed. The installed binary successfully performed Enable/update and then
-read back the real existing task: registered, enabled, owned, delay 6 seconds,
-no warnings. This was the user's requested startup repair, separate from the
-read-only release procedure. Actual launch at sign-in is still not tested.
 # Validation status
 
-## Integrated feature validation (2026-10-29 UTC)
+**v0.1.2 verification is pending.** The results below are historical and do not
+validate the planned release. Architecture-specific v0.1.1 build and archive
+checks are recorded in [BUILD-v0.1.1](BUILD-v0.1.1.md).
 
-The combined workspace passed the native Windows x64 gate after reconciling
+## Historical workspace validation (2026-10-29 UTC)
+
+The six-package workspace passed the native Windows x64 gate after reconciling
 `Cargo.lock` and fixing obsolete-position restoration across a resolution skip.
-The new failing-before/passing-after regression is retained in the local
-`reference/regression-before.log` and `reference/regression-after.log` evidence.
-A runtime regression also covers replacement and surviving identities while
-keeping appearance active. The GUI retains deferred painting/escaped icons and
-now displays the independent Rust package version.
+The regression failed before the fix and passed afterward. Runtime coverage also
+checks replacement and surviving identities while keeping appearance active.
+The GUI retained deferred painting/escaped icons and displayed the independent
+Rust package version.
 
 - `cargo fmt --all -- --check`: passed.
 - `cargo test --workspace --locked`: **279 passed**, 0 failed; five subprocess
@@ -31,25 +22,17 @@ now displays the independent Rust package version.
 - Read-only diagnostics: Windows 10 build 19045, one classic primary taskbar,
   safe proposed target, no warnings. No positioning/style mutation was requested.
 
-Evidence: `dist/verification/20261029T072050982Z-c5dd96e709544bf99cadada0632859ee/`.
-This run records the integrated merge revision plus the exact pre-commit dirty
-file list; the release procedure reruns every gate against the committed candidate
-and records its revision and portable/ZIP hashes in `dist/release-evidence/`.
-The final package's `evidence/verification/verification.json` and build metadata
-identify that release run without a self-referential source revision/hash.
-
-The pre-existing running engine (PID 1472, started 2026-10-28 22:54:03 local) was
-left running. The settings hash remained
-`4316F31E14372028598467566F2CE55735ADEB401C3AEFBB14BDEA7F2F3B2CF0`.
-Startup was not enabled; real scheduled tasks, shortcuts, Start and tray actions
-were not exercised. No GUI was launched for manual visual testing.
+The procedure did not start or stop the engine, change settings or exercise
+scheduled tasks, shortcuts, Start or tray actions. No GUI was launched for manual
+visual testing. Verification logs identify the tested source and artifacts;
+the local release procedure reruns the checks and records executable/archive
+hashes separately from the archive to avoid self-reference.
 
 ## Isolated shell/script checks (2026-10-29 UTC)
 
-On branch `feature/parity-startup-shell-release-20261028-f2c91a`, only the new
-`taskbarx-shell` crate was copied into an out-of-tree temporary harness. The root
-workspace manifest/lockfile and application binaries were not modified. These
-checks are **not integrated workspace or release-package validation**.
+The `taskbarx-shell` crate was checked in an isolated temporary harness, without
+modifying the workspace manifest/lockfile or application binaries. These checks
+are **not workspace or release-package validation**.
 
 | Check actually executed | Result |
 | --- | --- |
@@ -62,26 +45,24 @@ checks are **not integrated workspace or release-package validation**.
 
 Toolchain: `rustc 1.99.1`, `cargo 1.99.1`, native
 `x86_64-pc-windows-msvc`; `windows 0.61.3`, `serde 1.0.229` in the harness.
-The harness has its own generated lockfile. Non-Windows compilation was not
-executed (only the Windows target is installed); non-Windows public entry points
-are cfg-gated unsupported implementations, with a dedicated non-Windows test.
+The harness used its own generated lockfile. Non-Windows compilation was not
+executed; public entry points there are cfg-gated unsupported implementations,
+with a dedicated non-Windows test.
 
-Retained local-only evidence:
+The isolated checks did not query/register real scheduled tasks, create real
+shell links or tray icons, invoke Start, run engine commands/diagnostics, restart
+Explorer or produce an application package. Script fixtures performed no Cargo,
+application or desktop execution.
 
-- `%TEMP%/taskbarx-shell-check-824cefea567444f29da58c23b3a3847b/evidence-8aa2fcffa256481d99febb7f67ac9aa3/`
-  contains exact shell-only command argument arrays, exit codes, stdout/stderr
-  and `summary.json`.
-- `%TEMP%/TaskbarX-Rust-script-tests-20261029T070458706Z-2e367091c8ee47a5aee5da827bb81f5f/helper-tests.json`
-  records the final helper-fixture run. No Cargo/application/desktop execution is
-  performed by those fixtures.
+## Historical startup verification (2026-10-29)
 
-No actual scheduler registration/query, real shell link, notification icon,
-Start-menu action, engine command, `diagnose` probe, Explorer restart or application
-package was executed by this worktree's validation. Root must add the workspace
-member/dependencies, reconcile the sample and inventory with integrated code, run
-the complete locked workspace gates, and perform final local packaging separately.
+The account-name-to-SID fix (`ac69090`) was followed by 30 passing shell tests,
+strict shell Clippy and a passing locked release workspace build. A separate live
+check verified Enable/update and status: registered, enabled and owned, six-second
+delay, no warnings. **Actual launch at sign-in was not tested.** See the
+[startup regression details](TESTING.md#startup-verification-hotfix-2026-10-29).
 
-## Release evidence and remaining manual scope
+## New-candidate evidence and remaining scope
 
 Required evidence:
 - Format, workspace tests, mandatory Clippy, debug and release builds with locked dependencies.
@@ -90,6 +71,12 @@ Required evidence:
 - Script-helper results kept distinct from application validation.
 - Intentional compatibility and safety differences remain in [PARITY](PARITY.md).
 
-**Live visual parity, taskbar mutations/restoration, Explorer restart, startup registration, shortcuts/pinning and tray interaction: NOT EXECUTED by the release procedure.** Prior configurator inspection or earlier build evidence does not validate this changed candidate. The GUI and release binaries are not launched automatically.
+**Live visual parity, taskbar mutations/restoration, Explorer restart, startup registration, shortcuts/pinning and tray interaction are not exercised by the release procedure.** The GUI and release binaries are not launched automatically. The separate historical startup result above does not change this boundary.
 
-See [TESTING](TESTING.md) and [INTEGRATION](INTEGRATION.md). Do not overwrite an existing `app/` deployment, register startup, publish, push or restart Explorer as part of validation.
+Support is limited to the **Windows 10 classic taskbar; Windows 11 is unsupported**.
+Historical x86 checks ran under WOW64 on Windows 10 x64; native 32-bit Windows,
+most visual effects and live Rainmeter interaction remain untested. ARM64 is
+unavailable and unvalidated.
+
+See [TESTING](TESTING.md) and [INTEGRATION](INTEGRATION.md) for the locked checks,
+safe output directories and separation of local evidence from distribution packages.

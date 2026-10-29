@@ -17,7 +17,7 @@ This inventory covers **every field in Settings.vb, every switch parsed by Main.
 | [MainWindow.xaml][xaml] | 290 | `3bfd0116e91fe755aaf421933bf62e84f04d3373e2ad9c712888567799287035` |
 | [MainWindow.xaml.vb][gui] | 2418 | `708d437b71d77f0846c8629d2b1437cb48ff47d61b36d63f30d23f8f7691259d` |
 
-**Status labels:** **mapped** means a source/API/test location exists, not that live behavior was tested. Source integration was reconciled on 2026-10-29 against the combined workspace; final gate results are recorded in [VALIDATION](VALIDATION.md). **excluded** is deliberate. **dormant upstream** means no functional consumer was found in the reviewed source/tree search, not that the setting should be silently advertised as working.
+**Status labels:** **mapped** means a source/API/test location exists, not that live behavior was tested. Source integration was reviewed on 2026-10-29 against the six-package workspace; historical test results are recorded in [VALIDATION](VALIDATION.md). **excluded** is deliberate. **dormant upstream** means no functional consumer was found in the reviewed source/tree search. v0.1.2 verification is pending.
 
 ### Rust source/test destinations
 
@@ -130,13 +130,13 @@ Source: [MainWindow.xaml][xaml], codebehind [MainWindow.xaml.vb][gui]. Names bel
 | Main 406-410 | Force GC / working-set trim | Not a user-facing parity requirement; Rust resource ownership, no ritual memory trim |
 | GUI Store branches (181-198, 361-368, 1207-1223, 1933-1948) | Store URI/app activation and uninstall | **Excluded**, native portable Windows 10 only |
 
-## Integration closeout
+## Coverage summary
 
-All active feature mappings above have source implementations in the combined six-package workspace. This is source/automated-test coverage, not a claim of live visual equivalence. The disabled upstream features and safety replacements remain explicitly distinguished.
+All active feature mappings above have source implementations in the six-package workspace. This is source/automated-test coverage, not a claim of live visual equivalence. The disabled upstream features and safety replacements remain explicitly distinguished.
 
 Additional regression coverage in `state_tests.rs` and `src/runtime/tests.rs` verifies resolution-skip restoration after task-list replacement: positively obsolete positions retire without writes, surviving positions restore, appearance remains active, and uncertain identity queries remain retryable errors. The integrated lockfile includes all six packages.
 
-Final locked test/lint/build and packaging evidence is recorded in [VALIDATION](VALIDATION.md). Live taskbar, startup, shortcut, tray and visual checks remain **NOT EXECUTED** for this candidate.
+Historical locked test/lint/build results are recorded in [VALIDATION](VALIDATION.md), with architecture and packaging evidence in [BUILD-v0.1.1](BUILD-v0.1.1.md). A separate historical startup check verified Enable/update and status, not actual sign-in launch. Live taskbar effects/restoration, shortcuts/pinning, tray and Rainmeter interaction remain unestablished. None of this evidence validates v0.1.2.
 [settings]: https://github.com/ChrisAnd1998/TaskbarX/blob/master/TaskbarX/TaskbarX/Settings.vb
 [main]: https://github.com/ChrisAnd1998/TaskbarX/blob/master/TaskbarX/TaskbarX/Main.vb
 [style]: https://github.com/ChrisAnd1998/TaskbarX/blob/master/TaskbarX/TaskbarX/TaskbarStyle.vb
