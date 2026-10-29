@@ -23,12 +23,22 @@ param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$BinaryDirectory,
     [Parameter(Mandatory)][ValidateSet('x64', 'x86', 'arm64')][string]$Architecture,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$OutputDirectory,
-    [ValidateNotNullOrEmpty()][string]$Version = '0.1.1'
+    [ValidateNotNullOrEmpty()][string]$Version = '0.1.2'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression
+
+function Assert-DistributionPrivacy {
+    param([string]$Path)
+    $checker = Join-Path $PSScriptRoot 'check-distribution-privacy.ps1'
+    if (-not (Test-Path -LiteralPath $checker -PathType Leaf)) {
+        throw 'Distribution privacy checker is required.'
+    }
+    & $checker -Path $Path
+    if ($LASTEXITCODE -ne 0) { throw 'Distribution privacy check failed; do not distribute these files.' }
+}
 
 function Assert-ArchiveName {
     param([string]$Name)
@@ -264,6 +274,7 @@ try {
         $item = Open-PayloadFile (Join-Path $binary $name) $name
         $files.Add($item)
         Assert-PeMachine $item.Stream $name $machines[$Architecture]
+        Assert-DistributionPrivacy (Join-Path $binary $name)
     }
     foreach ($name in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'docs/settings.sample.json', 'docs/licenses/README.md')) {
         $destination = $name
@@ -384,10 +395,12 @@ LeftMouseUpAction=["#@#TaskbarX-Rust\taskbarx-configurator.exe"]
     $basename = "TaskbarX-Rust_${Version}_$Architecture"
     $zip = Join-Path $output "$basename.zip"
     Write-DistributionArchive $zip $files.ToArray() $texts
+    Assert-DistributionPrivacy $zip
     $rmskin = $null
     if ($Architecture -in @('x64', 'x86')) {
         $rmskin = Join-Path $output "$basename.rmskin"
         Write-DistributionArchive $rmskin $files.ToArray() ($texts + $skinTexts) "$skin/@Resources/TaskbarX-Rust/" -Rmskin
+        Assert-DistributionPrivacy $rmskin
     }
     [pscustomobject]@{ OutputDirectory = $output; ZipPath = $zip; RmskinPath = $rmskin; Version = $Version; Architecture = $Architecture }
 } finally {

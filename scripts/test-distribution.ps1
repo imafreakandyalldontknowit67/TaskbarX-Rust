@@ -3,7 +3,7 @@
 .SYNOPSIS
 Offline, dependency-free distribution tests using only inert fixture PE bytes.
 .DESCRIPTION
-Copies only package-distribution.ps1 into unique temporary fixture repositories.
+Copies the packager and privacy checker into unique temporary fixture repositories.
 Does not read real application binaries or execute any EXE, CMD, or Rainmeter
 skin. No build, download, installation, desktop/startup action, or publication.
 Fixtures are retained for inspection, including on failure; no recursive cleanup.
@@ -117,6 +117,8 @@ function New-FixtureRepository {
     Assert-FixturePath $scriptPath
     [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($scriptPath))
     [IO.File]::Copy($production, $scriptPath, $false)
+    [IO.File]::Copy((Join-Path $PSScriptRoot 'check-distribution-privacy.ps1'),
+        (Join-Path ([IO.Path]::GetDirectoryName($scriptPath)) 'check-distribution-privacy.ps1'), $false)
     foreach ($name in @('taskbarx.exe', 'taskbarx-configurator.exe')) { Write-FakePe (Join-Path $bin $name) $Machine }
     Write-Fixture (Join-Path $case 'sentinel.txt') 'UNCHANGED FIXTURE SENTINEL'
     foreach ($name in @('LICENSE', 'THIRD_PARTY_NOTICES.md') + $noticeNames) {
@@ -362,10 +364,10 @@ try {
         $machine = @{ x64 = 0x8664; x86 = 0x014c; arm64 = 0xaa64 }[$architecture]
         $fixture = New-FixtureRepository $architecture $machine
         [IO.File]::SetAttributes((Join-Path $fixture.Root $noticeNames[1]), [IO.FileAttributes]::Hidden)
-        foreach ($version in @('0.1.1', '1.2.3-rc.4+offline_7')) {
+        foreach ($version in @('0.1.2', '1.2.3-rc.4+offline_7')) {
             $output = New-OutputPath
             $arguments = @{ Fixture = $fixture; Architecture = $architecture; Output = $output }
-            if ($version -ne '0.1.1') {
+            if ($version -ne '0.1.2') {
                 $arguments.Version = $version
                 [void][IO.Directory]::CreateDirectory($output) # Explicit existing empty output is supported.
             }
