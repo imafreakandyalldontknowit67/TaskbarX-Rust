@@ -1,6 +1,6 @@
 [package]
 name = "taskbarx-core"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Platform-neutral TaskbarX centering geometry and animation curves"
 license = "MIT"
