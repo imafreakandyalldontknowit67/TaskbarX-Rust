@@ -4,3 +4,5 @@
 - `rust-logo.svg`: unmodified `rust-logo-white-outline.svg` from [rust-lang/rust-artwork](https://github.com/rust-lang/rust-artwork/tree/main/logo). Copyright the Rust project contributors. Licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). No changes to the artwork; displayed separately beside the TaskbarX banner. Rust is a trademark of the Rust Foundation. This independent project is not endorsed by the Rust project or Foundation.
 
 Optional upstream Start icons are linked, not redistributed. No upstream EXEs, signing keys or Store assets are included.
+- 	askbarx-rust-banner.png: edited version of the upstream banner, generated with the built-in image editor at the user's request. Modification: a small Rust-style notification badge overlaps the existing TaskbarX emblem inside the banner. The collage is upstream-derived artwork, not a live screenshot of the Rust application. Original attribution and the private-preview/public-rights-review caveat above still apply. The standalone logo is retained as an attribution reference but is no longer shown beside the banner.
+
