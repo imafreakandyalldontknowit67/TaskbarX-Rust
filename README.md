@@ -1,5 +1,5 @@
 <p>
-  <img src="docs/assets/taskbarx-rust-banner.png" width="640" alt="Composite of Chris Andriessen's TaskbarX banner with an embedded Rust badge near the bottom-right TaskbarX logo; upstream-derived artwork, not this Rust build">
+  <img src="docs/assets/taskbarx-rust-banner.png" width="100%" alt="Composite of Chris Andriessen's TaskbarX banner with an embedded Rust badge near the bottom-right TaskbarX logo; upstream-derived artwork, not this Rust build">
 </p>
 
 # TaskbarX-Rust
