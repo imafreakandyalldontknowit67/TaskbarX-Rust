@@ -11,6 +11,7 @@ fn rect(r: &Rect) -> Value {
 /// Dropping the untouched native Session is read-only by backend contract.
 pub(crate) fn report(backend: &mut impl Backend, settings: &Settings) -> Result<Value, String> {
     settings.validate()?;
+    backend.set_measurement_backend(runtime::measurement(&settings.measurement)?)?;
     let discovery = backend.discover()?;
     let taskbars: Vec<_> = discovery.taskbars.iter().map(|s| {
         let proposal = if discovery.native_windows11 { None } else { runtime::proposal(s, settings) };

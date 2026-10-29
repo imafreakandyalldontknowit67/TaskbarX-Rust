@@ -69,6 +69,15 @@ pub fn legal_position_range(layout: &AxisLayout) -> Option<(i32, i32)> {
 /// on positive and negative monitors. See [`legal_position_range`] for failures.
 pub fn center_target(layout: &AxisLayout, offset: i32, between: bool) -> Option<i32> {
     let (min, max) = legal_position_range(layout)?;
+    let target = requested_center(layout, offset, between)?;
+    i32::try_from(target.clamp(i64::from(min), i64::from(max))).ok()
+}
+
+/// Unclamped parent-relative request, widened so offsets cannot wrap. This is
+/// NOT a legal movement destination. Use it only for policy decisions before
+/// clamping (in particular, testing an already-clamped target hides tray overlap).
+pub fn requested_center(layout: &AxisLayout, offset: i32, between: bool) -> Option<i64> {
+    legal_position_range(layout)?;
     let (start, end) = if between {
         (layout.free_start, layout.free_end)
     } else {
@@ -77,7 +86,32 @@ pub fn center_target(layout: &AxisLayout, offset: i32, between: bool) -> Option<
     let start = i64::from(start);
     let span = i64::from(end) - start;
     let occupied_start = start + (span - i64::from(layout.content_len)) / 2;
-    let target = occupied_start - i64::from(layout.parent_start) - i64::from(layout.content_offset)
-        + i64::from(offset);
-    i32::try_from(target.clamp(i64::from(min), i64::from(max))).ok()
+    Some(
+        occupied_start - i64::from(layout.parent_start) - i64::from(layout.content_offset)
+            + i64::from(offset),
+    )
+}
+
+/// Optional upstream "revert beyond tray" behavior, without its unsafe zero
+/// write. If the requested occupied span crosses the trailing reservation,
+/// align its leading edge with the first representable legal position instead.
+/// Touching the half-open boundary is safe; crossing it is not. Works on either
+/// axis and on negative monitors. With fallback disabled, preserves center_target.
+pub fn center_target_with_overlap(
+    layout: &AxisLayout,
+    offset: i32,
+    between: bool,
+    revert_on_overlap: bool,
+) -> Option<i32> {
+    let (min, max) = legal_position_range(layout)?;
+    let request = requested_center(layout, offset, between)?;
+    let occupied_end = i64::from(layout.parent_start)
+        + request
+        + i64::from(layout.content_offset)
+        + i64::from(layout.content_len);
+    if revert_on_overlap && occupied_end > i64::from(layout.free_end) {
+        Some(min)
+    } else {
+        i32::try_from(request.clamp(i64::from(min), i64::from(max))).ok()
+    }
 }
