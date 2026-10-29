@@ -1,24 +1,27 @@
 <p>
-  <img src="docs/assets/taskbarx-banner.png" width="640" alt="Original TaskbarX banner by Chris Andriessen; upstream artwork, not this Rust build">
-  <img src="docs/assets/rust-logo.svg" width="80" alt="Rust programming language logo, displayed separately">
+  <img src="docs/assets/taskbarx-rust-banner.png" width="640" alt="Composite of Chris Andriessen's TaskbarX banner with an embedded Rust badge near the bottom-right TaskbarX logo; upstream-derived artwork, not this Rust build">
 </p>
 
 # TaskbarX-Rust
 
 An **independent Rust rewrite of Chris Andriessen's [TaskbarX](https://github.com/ChrisAnd1998/TaskbarX)** for taskbar positioning and appearance. Not an official upstream release.
 
-**v0.1.0 is an unsigned first preview**, targeting **native Windows 10 x64 with the classic Explorer taskbar only**.
+**v0.1.0 is an unsigned initial release**, targeting **native Windows 10 x64 with the classic Explorer taskbar only**.
 
 ## Downloads / quick start
 
-- **Recommended: [portable ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/TaskbarX-Rust-v0.1.0-windows-x64.zip)** · [v0.1.0 release page](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.0)
-- Individual downloads: [taskbarx.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx.exe) and [taskbarx-configurator.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx-configurator.exe). **Both EXEs must be in the same folder.**
+- **Primary download — [taskbarx-configurator.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx-configurator.exe):** the settings GUI and the file to open.
+- **REQUIRED companion engine — [taskbarx.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx.exe):** download this too; the configurator needs it to run TaskbarX.
 
-This preview is unsigned; keep Windows security checks enabled. Downloads require access while this repository is private.
+**Download BOTH EXEs into the SAME stable folder, then launch `taskbarx-configurator.exe`.** See the [v0.1.0 release page](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.0).
 
-1. Extract the ZIP to a stable folder.
-2. Open `taskbarx-configurator.exe` or the packaged `Open Settings.cmd`. Opening the GUI **does not start the engine**.
+This initial release is unsigned; keep Windows security checks enabled. Downloads require access while this repository is private.
+
+1. Download both EXEs above into the same stable folder; no extraction is needed.
+2. Open `taskbarx-configurator.exe`. Opening the GUI **does not start the engine**.
 3. Select your settings and press **Apply** to save and start/restart the engine. **Save** only persists JSON; **Apply never enables startup**.
+
+The direct downloads contain only the two EXEs, not `Open Settings.cmd`, sample files or packaged documentation. GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives contain source, **not the ready-to-run application**. They are GitHub-generated and cannot be removed as uploaded release assets. [Locally generated packages](docs/USER-GUIDE.md#build-verify-and-package-locally) are separate from these release downloads.
 
 Closing the GUI leaves the engine running. Use **Stop TaskbarX** to request graceful stop/restoration. Cleanup is not guaranteed after crashes or force termination, nor is exact restoration of every third-party effect. See the [user guide](docs/USER-GUIDE.md).
 
@@ -49,7 +52,7 @@ See [shortcut instructions and icon limitations](docs/USER-GUIDE.md#start-shortc
 
 ## Commandline examples
 
-From PowerShell in the extracted folder:
+From PowerShell in the folder containing both downloaded EXEs:
 
 ```powershell
 .\taskbarx.exe --help
@@ -75,4 +78,4 @@ Original TaskbarX by **Chris Andriessen**. **Copyright (c) 2021 Chris Andriessen
 
 Upstream ModernWPF, TaskScheduler and Emoji.Wpf references are .NET libraries, not this rewrite's Rust dependencies. Actual dependencies come from Cargo (including `clap`, `serde`, `serde_json` and `windows`); see [guide attribution](docs/USER-GUIDE.md#license-and-attribution).
 
-The banner depicts upstream, not this build; separate artwork rights require review before public distribution. The separate Rust logo is by Rust project contributors (CC BY 4.0), without endorsement. See [artwork provenance](docs/assets/README.md).
+The composite combines Chris Andriessen's upstream TaskbarX banner with an embedded Rust badge; it depicts upstream, not this build. Separate artwork rights require review before public distribution. Rust logo artwork is by Rust project contributors (CC BY 4.0); no Rust project or Foundation endorsement is implied. See [artwork provenance](docs/assets/README.md).

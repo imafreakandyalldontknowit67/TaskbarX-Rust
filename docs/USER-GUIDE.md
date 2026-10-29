@@ -4,15 +4,22 @@ An **independent Rust rewrite** of [ChrisAnd1998/TaskbarX](https://github.com/Ch
 
 ## Quick use
 
-**v0.1.0 is an unsigned first preview**, targeting native Windows 10 x64 with the classic Explorer taskbar only. Use the [README downloads and quick start](../README.md#downloads--quick-start) for release downloads (repository access is required while private).
+**v0.1.0 is an unsigned initial release**, targeting **native Windows 10 x64 with the classic Explorer taskbar only**. Keep Windows security checks enabled. Repository access is required for downloads while private.
 
-1. Extract the portable ZIP to a stable folder. Keep `taskbarx.exe` and `taskbarx-configurator.exe` together.
-2. Open `taskbarx-configurator.exe` or the packaged `Open Settings.cmd`. Opening settings does not start the engine.
+- **Primary download — [taskbarx-configurator.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx-configurator.exe):** the settings GUI and the file to open.
+- **REQUIRED companion engine — [taskbarx.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx.exe):** download this too; the configurator needs it to run TaskbarX.
+
+**Download BOTH EXEs into the SAME stable folder, then launch `taskbarx-configurator.exe`.** See the [v0.1.0 release page](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.0) and [README quick start](../README.md#downloads--quick-start).
+
+1. Download both EXEs above into the same stable folder; no extraction is needed.
+2. Open `taskbarx-configurator.exe`. Opening settings does not start the engine.
 3. Select settings, then press **Apply** to save and start/restart the engine. **Save** only persists JSON. Neither enables startup.
 4. If wanted, separately choose **Startup > Enable / update**. This uses the selected saved configuration and the delay shown (default **six seconds**); it does not save the form or start the engine. Editing the delay alone does not update registration.
 5. Closing the GUI leaves the engine running. Use **Stop TaskbarX** for a graceful stop and attempted restoration; crashes/force termination can bypass cleanup, and exact restoration of third-party effects is not guaranteed.
 
-Settings default to `%APPDATA%\TaskbarX-Rust\settings.json`, not the portable binaries' folder. Use `--config PATH` to select another file. For example, from the extracted folder, `.\taskbarx-configurator.exe --config 'C:\Tools\TaskbarX-Rust\settings.json'` opens the editor for that path without starting the engine.
+The direct downloads contain only the two EXEs, not `Open Settings.cmd`, sample files or packaged documentation. GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives contain source, **not the ready-to-run application**. They are GitHub-generated and cannot be removed as uploaded release assets. [Locally generated packages](#build-verify-and-package-locally) are separate from these release downloads.
+
+Settings default to `%APPDATA%\TaskbarX-Rust\settings.json`, not the portable binaries' folder. Use `--config PATH` to select another file. For example, from the folder containing both EXEs, `.\taskbarx-configurator.exe --config 'C:\Tools\TaskbarX-Rust\settings.json'` opens the editor for that path without starting the engine.
 
 **Update or remove:** stop first and confirm completion; preserve/back up settings. Explicitly disable the owned startup task before moving/removing executable or config paths, then use **Enable / update** from the new location if desired. For an in-place update, close the GUI before replacing both EXEs. Remove owned custom shortcuts explicitly on **Start Button**, then manually remove the portable folder if uninstalling. No application folder, unrelated task or upstream TaskbarX task is automatically deleted or migrated.
 
@@ -26,7 +33,7 @@ The [parity inventory (repository source)](https://github.com/imafreakandyalldon
 
 **Source `ac69090` includes the live-verified startup enable/status account-name-to-SID fix.** In a separate user-requested repair, the installed binary enabled/updated and read back the real task as registered, enabled and owned, with a six-second delay and no warnings. This verifies that operation, not actual logon launch. **Actual launch at sign-in and most visual effects have not been live-tested.** Live positioning/restoration, visual parity, performance, real shortcuts/pinning and tray interaction are not established by the automated checks or that startup repair.
 
-See [testing (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/TESTING.md), [validation status (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/VALIDATION.md) and [release gates (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/INTEGRATION.md). These developer documents, along with PARITY and SHELL, are deliberately excluded from the portable package; their repository links target the v0.1.0 source tag and require repository access. They are not required for basic use of this guide. A local verification ZIP is not evidence that a release was signed or published.
+See [testing (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/TESTING.md), [validation status (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/VALIDATION.md) and [release gates (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/INTEGRATION.md). These developer documents, along with PARITY and SHELL, are deliberately excluded from the locally generated portable package; their repository links target the v0.1.0 source tag and require repository access. They are not required for basic use of this guide. A local verification ZIP is not evidence that a release was signed or published.
 
 ## Architecture
 
@@ -150,7 +157,7 @@ Shell paths must be absolute, valid Unicode and NUL-free; individual values and 
 
 ### Examples
 
-Run these from the extracted package folder (or a folder containing the two EXEs). Read-only inspection:
+Run these from the folder containing the two EXEs. Read-only inspection:
 
 ```powershell
 .\taskbarx.exe diagnose --json
@@ -159,6 +166,8 @@ Run these from the extracted package folder (or a folder containing the two EXEs
 ```
 
 Intentional user actions, **not automated tests**:
+
+The import example additionally requires `docs/settings.sample.json` from a source checkout or locally generated package, available at the relative path shown. The two-EXE release downloads do not include that sample.
 
 ```powershell
 # Save only; no taskbar or startup change.
@@ -177,7 +186,7 @@ Get-Content -Raw .\docs\settings.sample.json | .\taskbarx.exe config import --st
 
 ## Settings
 
-Default: `%APPDATA%\TaskbarX-Rust\settings.json`. `--config PATH` selects another file; the portable folder does not implicitly become the settings directory. [Complete schema-1 defaults](settings.sample.json):
+Default: `%APPDATA%\TaskbarX-Rust\settings.json`. `--config PATH` selects another file; the portable folder does not implicitly become the settings directory. [Complete schema-1 defaults](settings.sample.json) (sample available in a source checkout or locally generated package, not the two-EXE release downloads):
 
 | Fields | Defaults / units |
 | --- | --- |
@@ -220,12 +229,12 @@ Required gates: format, workspace tests, Clippy with warnings denied and real co
 
 The default Cargo target is a unique `dist/cargo-target/<id>` directory. An explicit `CARGO_TARGET_DIR` may be outside the checkout, but must be an absolute new/empty directory, outside this checkout's `target/` and `app/` trees, with no reparse-point ancestors. Relative, occupied or reparse paths are rejected. Script-only helper fixtures/logs use a unique `%TEMP%/TaskbarX-Rust-script-tests-<id>` directory, not release evidence under `dist/`.
 
-Release repeats verification and emits both Rust executables, user documents/sample, dependency inventory, SHA-256 checksums and a local ZIP under unique `dist/` paths. It does not sign, publish, upload, install, push or alter an existing `app/` deployment. This is a repeatable locked procedure, **not a byte-identical archive guarantee**. See [release acceptance (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/INTEGRATION.md). Build scripts and source are not part of the portable user workflow.
+The local `scripts/release.ps1` workflow repeats verification and emits both Rust executables, user documents/sample, dependency inventory, SHA-256 checksums and a local ZIP under unique `dist/` paths. These locally generated ZIPs are distinct from the two direct EXE release downloads and GitHub's automatic source archives. The script does not sign, publish, upload, install, push or alter an existing `app/` deployment. This is a repeatable locked procedure, **not a byte-identical archive guarantee**. See [release acceptance (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/INTEGRATION.md). Build scripts and source are not part of the portable user workflow.
 
 ## License and attribution
 
 [LICENSE](../LICENSE) preserves upstream's MIT license and **Copyright (c) 2021 Chris Andriessen**. See [third-party notices](../THIRD_PARTY_NOTICES.md). No upstream executable, Store asset, signing key or certificate is included or used. Upstream update/version checks describe the upstream product, not releases of this rewrite.
 
-Upstream references to ModernWPF, TaskScheduler and Emoji.Wpf are .NET references, **not Rust dependencies**. This Cargo workspace uses its own crates plus dependencies such as `clap`, `serde`, `serde_json` and `windows`; the resolved Cargo.lock/metadata inventory, not the upstream README, identifies the actual dependency versions. Preserve notices for derived source, formulas and defaults. The packaged [dependency license texts](licenses/README.md) supplement the inventory; declared license metadata alone is not a compliance certification.
+Upstream references to ModernWPF, TaskScheduler and Emoji.Wpf are .NET references, **not Rust dependencies**. This Cargo workspace uses its own crates plus dependencies such as `clap`, `serde`, `serde_json` and `windows`; the resolved Cargo.lock/metadata inventory, not the upstream README, identifies the actual dependency versions. Preserve notices for derived source, formulas and defaults. The [dependency license texts](licenses/README.md), available in a source checkout or locally generated package rather than the two-EXE release downloads, supplement the inventory; declared license metadata alone is not a compliance certification.
 
-See [artwork provenance](assets/README.md): the unchanged banner depicts upstream TaskbarX, not a screenshot of this build. Separate wallpaper/artwork rights have not been established and require review before public distribution. The separately displayed Rust logo is copyright the Rust project contributors, licensed CC BY 4.0; Rust is a Rust Foundation trademark. No Rust project/Foundation endorsement is implied. Optional upstream Start icons are linked rather than redistributed, and their use/redistribution rights must not be inferred from the source MIT license.
+See [artwork provenance](assets/README.md): the composite adds an embedded Rust badge near the bottom-right TaskbarX logo in Chris Andriessen's upstream banner. It depicts upstream TaskbarX, not a screenshot of this build. Separate wallpaper/artwork rights have not been established and require review before public distribution. Rust logo artwork is copyright the Rust project contributors, licensed CC BY 4.0; Rust is a Rust Foundation trademark. No Rust project/Foundation endorsement is implied. Optional upstream Start icons are linked rather than redistributed, and their use/redistribution rights must not be inferred from the source MIT license.
