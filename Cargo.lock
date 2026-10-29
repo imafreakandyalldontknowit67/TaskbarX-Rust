@@ -223,6 +223,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "taskbarx-core",
  "windows-sys",
 ]
 
@@ -232,7 +233,9 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "taskbarx-config",
  "taskbarx-core",
+ "taskbarx-shell",
  "windows",
 ]
 
@@ -248,7 +251,16 @@ dependencies = [
  "serde_json",
  "taskbarx-config",
  "taskbarx-core",
+ "taskbarx-shell",
  "taskbarx-win32",
+ "windows",
+]
+
+[[package]]
+name = "taskbarx-shell"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "windows",
 ]
 

@@ -219,6 +219,15 @@ impl<A: Api> Controller<A> {
         let Some((original, vertical)) = self.changes.get(id).and_then(|c| c.position) else {
             return Ok(());
         };
+        // Runtime retains moved identities across discovery gaps. A positively
+        // replaced/destroyed child has no position left to restore. Retire only
+        // that position, keeping root appearance/effects owned independently.
+        // Query failures are NOT evidence of destruction and still error below.
+        if self.api.obsolete(id) {
+            self.changes.get_mut(id).unwrap().position = None;
+            self.prune(id);
+            return Ok(());
+        }
         self.api.validate(id)?;
         self.effects.suspend_region(&mut self.api, id)?;
         let (current, now_vertical) = self.api.position(id)?;

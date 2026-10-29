@@ -251,6 +251,9 @@ impl Session {
         }
     }
 
+    /// Restores surviving owned positions; positively replaced/destroyed children
+    /// are retired without writes. Uncertain identity queries remain errors.
+    /// Appearance ownership is unaffected.
     pub fn restore_position(&mut self, id: &TaskbarId) -> Result<(), String> {
         #[cfg(windows)]
         {

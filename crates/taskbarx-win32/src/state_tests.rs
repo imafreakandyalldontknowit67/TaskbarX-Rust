@@ -64,6 +64,7 @@ struct Fake {
     queryable: bool,
     invalid_classes: bool,
     invalid_ancestry: bool,
+    positively_obsolete: HashSet<TaskbarId>,
 }
 impl Fake {
     fn new() -> Self {
@@ -92,6 +93,7 @@ impl Fake {
             queryable: true,
             invalid_classes: false,
             invalid_ancestry: false,
+            positively_obsolete: HashSet::new(),
         }
     }
     fn record(&self, kind: &str, id: &TaskbarId) {
@@ -99,6 +101,9 @@ impl Fake {
     }
 }
 impl Api for Fake {
+    fn obsolete(&mut self, id: &TaskbarId) -> bool {
+        self.positively_obsolete.contains(id)
+    }
     fn validate_root(&mut self, id: &TaskbarId) -> Result<(), String> {
         if !self.invalid_classes
             && self.live.iter().any(|i| {
@@ -515,4 +520,53 @@ fn surviving_root_restores_even_without_reapplying_to_recreated_child() {
     assert!(c.restore().is_empty());
     assert_eq!(c.api.styles[&old], original);
     assert!(c.changes.is_empty());
+}
+
+#[test]
+fn resolution_skip_retires_replaced_list_without_touching_surviving_appearance() {
+    let mut c = session();
+    let old = id(1);
+    let other = id(2);
+    c.move_task_list(&old, Point { x: 100, y: 3 }).unwrap();
+    c.move_task_list(&other, Point { x: 200, y: 3 }).unwrap();
+    c.set_style(&old, Style::Blur, [1, 2, 3, 100]).unwrap();
+    let appearance = c.api.styles[&old];
+    let mut replacement = old;
+    replacement.task_list += 100;
+    c.api.live.remove(&old);
+    c.api.live.insert(replacement);
+    c.api.positively_obsolete.insert(old);
+    c.api.snapshots.remove(&old);
+    c.api.snapshots.insert(replacement, snapshot(replacement));
+    c.discover().unwrap();
+    c.move_task_list(&replacement, Point { x: 150, y: 3 })
+        .unwrap();
+    c.api.log.borrow_mut().clear();
+    // Runtime keeps movement ownership across discoveries and restores every
+    // retained identity on a resolution skip, including this replaced child.
+    c.restore_position(&old).unwrap();
+    assert!(c.api.log.borrow().is_empty());
+    assert!(c.changes[&old].position.is_none());
+    assert!(c.changes[&old].accent.is_some());
+    c.restore_position(&replacement).unwrap();
+    c.restore_position(&other).unwrap();
+    assert_eq!(c.api.snapshots[&replacement].position.x, 0);
+    assert_eq!(c.api.snapshots[&other].position.x, 0);
+    assert_eq!(c.api.styles[&old], appearance);
+    assert!(c.api.log.borrow().iter().all(|e| e.starts_with("move:")));
+    assert!(c.restore().is_empty());
+}
+
+#[test]
+fn position_restore_keeps_uncertain_identity_retryable() {
+    let mut c = session();
+    c.move_task_list(&id(1), Point { x: 100, y: 3 }).unwrap();
+    c.api.invalid_ancestry = true; // Query uncertainty, not positive replacement.
+    c.api.log.borrow_mut().clear();
+    assert!(c.restore_position(&id(1)).is_err());
+    assert!(c.changes[&id(1)].position.is_some());
+    assert!(c.api.log.borrow().is_empty());
+    c.api.invalid_ancestry = false;
+    c.restore_position(&id(1)).unwrap();
+    assert_eq!(c.api.snapshots[&id(1)].position.x, 0);
 }

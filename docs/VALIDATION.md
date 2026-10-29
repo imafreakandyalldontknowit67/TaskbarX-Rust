@@ -1,6 +1,36 @@
 # Validation status
 
-The final integrated feature/release gate has **not been claimed by this documentation update**. The integration owner must summarize the actual final source revision, command results and unique evidence paths here after all code and documentation changes are reconciled.
+## Integrated feature validation (2026-10-29 UTC)
+
+The combined workspace passed the native Windows x64 gate after reconciling
+`Cargo.lock` and fixing obsolete-position restoration across a resolution skip.
+The new failing-before/passing-after regression is retained in the local
+`reference/regression-before.log` and `reference/regression-after.log` evidence.
+A runtime regression also covers replacement and surviving identities while
+keeping appearance active. The GUI retains deferred painting/escaped icons and
+now displays the independent Rust package version.
+
+- `cargo fmt --all -- --check`: passed.
+- `cargo test --workspace --locked`: **279 passed**, 0 failed; five subprocess
+  fixture entry points are intentionally ignored as standalone tests.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`: passed.
+- Locked debug and release workspace builds: passed, both x64 EXEs validated.
+- Script fixtures: **103 assertions passed**, separate from application tests.
+- Read-only diagnostics: Windows 10 build 19045, one classic primary taskbar,
+  safe proposed target, no warnings. No positioning/style mutation was requested.
+
+Evidence: `dist/verification/20261029T072050982Z-c5dd96e709544bf99cadada0632859ee/`.
+This run records the integrated merge revision plus the exact pre-commit dirty
+file list; the release procedure reruns every gate against the committed candidate
+and records its revision and portable/ZIP hashes in `dist/release-evidence/`.
+The final package's `evidence/verification/verification.json` and build metadata
+identify that release run without a self-referential source revision/hash.
+
+The pre-existing running engine (PID 1472, started 2026-10-28 22:54:03 local) was
+left running. The settings hash remained
+`4316F31E14372028598467566F2CE55735ADEB401C3AEFBB14BDEA7F2F3B2CF0`.
+Startup was not enabled; real scheduled tasks, shortcuts, Start and tray actions
+were not exercised. No GUI was launched for manual visual testing.
 
 ## Isolated shell/script checks (2026-10-29 UTC)
 
@@ -39,14 +69,14 @@ package was executed by this worktree's validation. Root must add the workspace
 member/dependencies, reconcile the sample and inventory with integrated code, run
 the complete locked workspace gates, and perform final local packaging separately.
 
-## Integrated evidence still required
+## Release evidence and remaining manual scope
 
 Required evidence:
 - Format, workspace tests, mandatory Clippy, debug and release builds with locked dependencies.
 - Compiler-reported x64 CLI/GUI artifacts and matching hashes in the portable folder and ZIP.
 - Read-only `diagnose --json`, with unsupported layouts/skipped measurements reported honestly.
 - Script-helper results kept distinct from application validation.
-- Remaining integration/UI gaps in [PARITY](PARITY.md), not hidden by changing the inventory.
+- Intentional compatibility and safety differences remain in [PARITY](PARITY.md).
 
 **Live visual parity, taskbar mutations/restoration, Explorer restart, startup registration, shortcuts/pinning and tray interaction: NOT EXECUTED by the release procedure.** Prior configurator inspection or earlier build evidence does not validate this changed candidate. The GUI and release binaries are not launched automatically.
 

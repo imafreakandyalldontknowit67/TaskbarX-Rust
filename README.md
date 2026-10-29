@@ -6,7 +6,7 @@ An **independent Rust rewrite** of [ChrisAnd1998/TaskbarX](https://github.com/Ch
 
 Target: **native Windows 10 x64 with the classic Explorer taskbar**. Native modern Windows 11 taskbars are unsupported; classic-shell modifications on Windows 11 are not a promised configuration. Elevation is not a compatibility workaround. Microsoft Store packaging/protocol activation is excluded.
 
-The [source-linked parity inventory](docs/PARITY.md) distinguishes source mappings, pending integration, dormant upstream code and deliberate differences. It is not a visual-parity claim. **Live positioning, styles, restoration, startup, shortcuts and tray interaction are not verified by automated release checks.** Their only desktop probe is read-only `diagnose --json`. See [testing](docs/TESTING.md), [validation status](docs/VALIDATION.md) and [release gates](docs/INTEGRATION.md).
+The [source-linked parity inventory](docs/PARITY.md) distinguishes implemented source mappings, dormant upstream code and deliberate differences. It is not a visual-parity claim. **Live positioning, styles, restoration, startup, shortcuts and tray interaction are not verified by automated release checks.** Their only desktop probe is read-only `diagnose --json`. See [testing](docs/TESTING.md), [validation status](docs/VALIDATION.md) and [release gates](docs/INTEGRATION.md).
 
 ## Architecture
 
@@ -66,7 +66,7 @@ taskbarx-configurator.exe [--engine PATH] [--config PATH]
 | `--center-between` | Center between leading controls and tray |
 | `--background` | Explicit background launch; never enables startup |
 
-`run` overrides are not persisted. Other settings use the GUI or JSON import. `stop` requests graceful cleanup with a timeout. `config show` does not create a missing file; `config import --stdin` saves without applying. `configure` opens the sibling GUI; keep both executables together or supply the GUI's `--engine PATH`.
+`run` overrides are not persisted. Additional feature overrides are listed by `run --help`; every persisted field is also editable in the GUI or JSON import. `stop` requests graceful cleanup with a timeout. `config show` does not create a missing file; `config import --stdin` saves without applying. `configure` opens the sibling GUI; keep both executables together or supply the GUI's `--engine PATH`.
 
 Startup status is read-only. Startup JSON is the direct `StartupStatus` object. Enable/Disable reports OS errors, not false success. Enabling registers a current-user launch with the selected config/delay; it does not immediately run it. Keep executable/config paths stable, or explicitly update/disable registration before moving the folder.
 

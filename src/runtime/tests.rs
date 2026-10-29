@@ -24,6 +24,7 @@ struct Data {
     fail_root_restore: bool,
     fail_provider: bool,
     discovery_delay: u64,
+    position_restores: Vec<TaskbarId>,
 }
 #[derive(Clone, Default)]
 struct Fake(Rc<RefCell<Data>>);
@@ -112,6 +113,7 @@ impl Backend for Fake {
     }
     fn restore_position(&mut self, id: &TaskbarId) -> Result<(), String> {
         let mut d = self.0.borrow_mut();
+        d.position_restores.push(*id);
         d.events.push(format!("restore-position:{}", id.root));
         let now = d.now;
         d.mutation_times.push(now);
@@ -1249,6 +1251,42 @@ fn fullscreen_and_skip_combination_defers_position_restore_until_resume() {
         1
     );
     assert!(d.mutation_times.contains(&300));
+}
+
+#[test]
+fn resolution_skip_restores_retained_and_replacement_identities_without_resetting_effects() {
+    let fake = Fake::default();
+    let original = snapshot(1, true, 50);
+    let mut replacement = original.clone();
+    replacement.id.task_list += 100;
+    let surviving = snapshot(2, false, 50);
+    let s = Settings {
+        skip_resolutions: vec![1000],
+        poll_ms: 100,
+        animation: "none".into(),
+        style: "blur".into(),
+        ..settings()
+    };
+    fake.0.borrow_mut().environments.extend([
+        (0, env(vec![monitor(-800, 0, true, false, false)], None)),
+        (200, env(vec![monitor(-1000, 0, true, false, false)], None)),
+    ]);
+    fake.0.borrow_mut().discoveries.extend([
+        Ok(discovery(vec![original.clone(), surviving.clone()])),
+        Ok(discovery(vec![replacement.clone(), surviving.clone()])),
+        Ok(discovery(vec![replacement.clone(), surviving.clone()])),
+    ]);
+    drive(fake.clone(), &mut bound_clock(&fake, 250), &s).unwrap();
+    let d = fake.0.borrow();
+    // The native Session regression covers retirement of positively obsolete
+    // entries without writes. Runtime must still ask for all retained positions
+    // so a temporary discovery gap does not leak a surviving owned movement.
+    for id in [original.id, replacement.id, surviving.id] {
+        assert!(d.position_restores.contains(&id));
+    }
+    assert!(!d.events.iter().any(|e| e.starts_with("restore-root:")));
+    assert!(d.features.iter().all(|(_, f)| f.style == Style::Blur));
+    assert_eq!(d.events.last().unwrap(), "restore-all");
 }
 
 #[test]

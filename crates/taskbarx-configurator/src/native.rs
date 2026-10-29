@@ -746,7 +746,11 @@ impl Ui {
         self.building_page = 7;
         self.label("TaskbarX", 201, 105, 600, 35)?;
         self.label(
-            "Rust rewrite - original interface by Chris Andriessen",
+            concat!(
+                "Rust ",
+                env!("CARGO_PKG_VERSION"),
+                " - original interface by Chris Andriessen"
+            ),
             201,
             153,
             600,
