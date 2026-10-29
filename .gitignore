@@ -1,0 +1,5 @@
+target/
+reference/
+.worktrees/
+tasks*.json
+
