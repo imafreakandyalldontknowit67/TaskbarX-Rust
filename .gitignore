@@ -9,3 +9,16 @@ tasks*.json
 dist/
 
 app/
+
+# Local credentials, crash dumps and developer artifacts are never source inputs.
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.key
+*.pem
+*.pdb
+*.dmp
+*.log
+.private/
