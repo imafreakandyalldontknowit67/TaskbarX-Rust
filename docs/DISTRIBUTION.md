@@ -130,7 +130,7 @@ Keep `LICENSE`, `THIRD_PARTY_NOTICES.md` and applicable `docs/licenses/` texts w
 
 Upstream-like architecture and Rainmeter choices do not require upstream .NET internals. This native Rust rewrite does not need upstream ModernWPF, TaskScheduler or Emoji.Wpf DLLs or their resource directories; upstream binaries must never be relabeled as Rust builds. Actual dependencies are determined by Cargo, and this does **not** imply every system dependency is statically linked.
 
-Preserve Chris Andriessen's attribution and Copyright (c) 2021 under the [MIT license](../LICENSE), plus [third-party notices](../THIRD_PARTY_NOTICES.md) and [dependency license texts](licenses/README.md). The repository banner is an original AI-generated conceptual illustration, not an application screenshot or upstream-derived artwork, and is not bundled; see [artwork provenance](assets/README.md). Neither the project nor its package format implies upstream, Rainmeter, Rust project or Rust Foundation endorsement.
+Preserve Chris Andriessen's attribution and Copyright (c) 2021 under the [MIT license](../LICENSE), plus [third-party notices](../THIRD_PARTY_NOTICES.md) and [dependency license texts](licenses/README.md). The repository banner adapts the upstream TaskbarX collage with an integrated Rust-style badge, is not a screenshot of the Rust build, and is not bundled. Separate wallpaper/artwork redistribution rights have not been established; see [artwork provenance](assets/README.md). Neither the project nor its package format implies upstream, Rainmeter, Rust project or Rust Foundation endorsement.
 
 ## Distribution checks
 

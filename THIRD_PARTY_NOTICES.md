@@ -31,6 +31,6 @@ A local validation ZIP is not a claim that redistribution obligations have been 
 
 ## Artwork and dependency notices
 
-The repository banner is an original AI-generated conceptual illustration, not upstream artwork or a screenshot. See [artwork provenance](docs/assets/README.md). The official Rust logo and upstream wallpaper collage are not included. Optional upstream icon downloads are linked rather than bundled.
+The repository banner adapts the upstream TaskbarX collage with an integrated Rust-style badge; it is not a screenshot of the Rust build. Separate wallpaper/artwork redistribution rights have not been established. See [artwork provenance](docs/assets/README.md). The banner is not included in distribution packages. Optional upstream icon downloads are linked rather than bundled.
 
 [Dependency license texts](docs/licenses/README.md) accompany the locked Rust dependencies. Portable packages include the applicable notices under `docs/licenses/`.

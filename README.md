@@ -1,5 +1,5 @@
 <p>
-  <img src="docs/assets/taskbarx-rust-original.png" width="100%" alt="Original AI-generated conceptual TaskbarX-Rust illustration with abstract taskbar motifs; not an application screenshot">
+  <img src="docs/assets/taskbarx-rust-banner.png" width="100%" alt="Upstream TaskbarX collage with an integrated Rust-style badge; not a screenshot of the Rust build">
 </p>
 
 # TaskbarX-Rust
@@ -82,4 +82,4 @@ Original TaskbarX by **Chris Andriessen**. **Copyright (c) 2021 Chris Andriessen
 
 Upstream-like package choices do not reproduce upstream .NET internals: this native Rust rewrite does not need upstream ModernWPF, TaskScheduler or Emoji.Wpf DLLs or their resource directories. Never relabel upstream binaries as Rust builds. Actual dependencies come from Cargo (including `clap`, `serde`, `serde_json` and `windows`); this is not a claim that every system dependency is statically linked. See [guide attribution](docs/USER-GUIDE.md#license-and-attribution).
 
-The banner is an original AI-generated conceptual illustration, not an application screenshot or upstream-derived artwork, and is not bundled in distribution packages. No upstream, Microsoft, Rainmeter, Rust project or Rust Foundation endorsement is implied. See [artwork provenance](docs/assets/README.md).
+The banner adapts the upstream TaskbarX collage with an integrated Rust-style badge; it is not a screenshot of the Rust build and is not bundled in distribution packages. Separate wallpaper/artwork redistribution rights have not been established. No upstream, Microsoft, Rainmeter, Rust project or Rust Foundation endorsement is implied. See [artwork provenance](docs/assets/README.md).
