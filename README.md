@@ -1,152 +1,151 @@
 # TaskbarX-Rust
 
-An **independent Rust rewrite** of [ChrisAnd1998/TaskbarX](https://github.com/ChrisAnd1998/TaskbarX), originally by Chris Andriessen. This is **not an official upstream release**, nor a binary-compatible replacement for its command line.
+An **independent Rust rewrite** of [ChrisAnd1998/TaskbarX](https://github.com/ChrisAnd1998/TaskbarX), originally by Chris Andriessen. Not an official upstream release or a binary-compatible replacement for its CLI.
 
-## Status and compatibility
+## Compatibility and evidence
 
-The target is **Windows 10 x64 with the classic Explorer taskbar**. The development host is Windows 10 build **19045**. This document defines the combined implementation contract; the documentation branch alone contains no Rust application. A feature listed below is an implementation requirement, not evidence that it has passed live desktop testing. See [integration gates](docs/INTEGRATION.md) and [test status](docs/TESTING.md).
+Target: **native Windows 10 x64 with the classic Explorer taskbar**. Native modern Windows 11 taskbars are unsupported; classic-shell modifications on Windows 11 are not a promised configuration. Elevation is not a compatibility workaround. Microsoft Store packaging/protocol activation is excluded.
 
-**Native modern Windows 11 taskbars are unsupported.** Elevation or a different animation setting does not make them compatible. Classic-shell modifications on Windows 11 are not a promised supported configuration. Do not run as administrator as a compatibility workaround.
+The [source-linked parity inventory](docs/PARITY.md) distinguishes source mappings, pending integration, dormant upstream code and deliberate differences. It is not a visual-parity claim. **Live positioning, styles, restoration, startup, shortcuts and tray interaction are not verified by automated release checks.** Their only desktop probe is read-only `diagnose --json`. See [testing](docs/TESTING.md), [validation status](docs/VALIDATION.md) and [release gates](docs/INTEGRATION.md).
 
 ## Architecture
 
-| Package / location | Responsibility / output |
+| Package | Responsibility |
 | --- | --- |
-| `taskbarx-rust` / root | CLI, engine lifecycle and single-instance coordination; `taskbarx.exe` |
-| `taskbarx-core` / `crates/taskbarx-core` | Pure geometry and easing; no real desktop mutation |
-| `taskbarx-win32` / `crates/taskbarx-win32` | Shell discovery, MSAA measurements, movement, styles and restoration |
-| `taskbarx-config` / `crates/taskbarx-config` | Validated, versioned JSON settings |
-| `taskbarx-configurator` / `crates/taskbarx-configurator` | GUI; `taskbarx-configurator.exe` |
+| `taskbarx-rust` | `taskbarx.exe`: CLI, runtime policies, animation scheduling, single-instance coordination and graceful shutdown |
+| `taskbarx-core` | Pure signed-coordinate geometry and 42 easing selections |
+| `taskbarx-win32` | Classic-shell discovery, MSAA/UI Automation measurement, owned mutations and restoration |
+| `taskbarx-config` | Shared validated schema-1 JSON settings and atomic persistence |
+| `taskbarx-shell` | Explicit current-user startup, owned shortcuts, Start-menu action and queued tray actions |
+| `taskbarx-configurator` | `taskbarx-configurator.exe`: settings editor and explicit engine/shell actions |
 
-There was no pre-existing Rust or `package.json` project to preserve. The upstream reference is a VB.NET/.NET Framework application, not a build input or a source of executable files for this rewrite.
+The upstream VB.NET application is reference material, not a Rust build input or a source of executable files to rename and redistribute.
 
-## Feature parity boundary
+## Safety and behavior
 
-| Feature | Requested implemented scope after integration | Validation / exclusions |
-| --- | --- | --- |
-| Primary and secondary taskbars | Center either or both; horizontal and vertical edges | Requires accessible, recognized Windows 10 shell layout |
-| Centering modes | Full-taskbar midpoint by default; free span between leading controls and tray with `--center-between` | Geometry must use signed screen/parent coordinates and avoid reserved areas |
-| Offsets | Independent signed primary/secondary offsets along the taskbar axis | Positive moves right/down; negative moves left/up, subject to available space |
-| Animation | 42 selections including `none`, plus configurable duration | Pure easing tests do not establish visual smoothness |
-| Appearance | `default`, `transparent`, `blur`, `acrylic`, `opaque`, with RGBA color | Undocumented composition behavior varies; not an exact appearance guarantee |
-| Configuration | JSON persistence, CLI overrides and GUI editing | Saving is not applying; Apply/start is explicit |
-| Lifecycle | Single-instance operation; graceful stop with restoration | Never substitute force-killing another process for graceful stop |
-| Explorer recovery | Rediscover taskbars after Explorer restarts | Stale handles must not be reused; live recovery not tested here |
-| Startup and tray extras | **Not promised** | No startup scheduling or tray-icon feature parity |
-| Shell customization extras | **Not promised** | No Start/tray hiding, taskbar segments/rounding or custom Start buttons |
-| Policy and distribution extras | **Not promised** | No battery-specific policies, fullscreen/maximized exceptions or Store integration |
-| Legacy CLI | **Not promised** | Historical upstream switches are not accepted aliases |
+- Opening help/configuration and reading settings never starts the engine. Save persists only. Apply/start explicitly saves, requests graceful stop, then starts. Failed stop is not bypassed by force-killing or duplicate launch.
+- **Save, Apply, run and startup-delay preference changes never register startup.** Only explicit Enable/Disable changes the rewrite's owned startup registration. Upstream tasks are not migrated or removed.
+- Failed/empty/ambiguous accessibility measurements skip movement rather than guess bounds. MSAA is default; `uia` selects a real alternate provider, not an alias. Individual out-of-process accessibility calls can block despite traversal budgets.
+- Full-taskbar and free-span centering use signed coordinates. Independent offsets apply along the taskbar axis: positive right/down, negative left/up, within available space.
+- Styles are `default`, `transparent`, **`transparent-gradient`**, `blur`, `acrylic`, `opaque`. Transparent and transparent-gradient are distinct. Composition APIs are undocumented and build/theme dependent.
+- Capture opacity, region and control visibility before owned changes. Third-party accent state cannot always be captured or exactly restored; fallback requests Windows-managed appearance. Avoid competing taskbar utilities.
+- Graceful shutdown attempts cleanup. Hard termination, crashes and power loss can bypass it. Perfect restoration is not guaranteed. Explorer recovery discards destroyed identities, never restoring reused handles.
+- Width exceptions suspend **centering only**, based on the primary monitor width. Fullscreen pause suspends accessibility polling/taskbar mutation while keeping shutdown responsive. Null battery overrides inherit normal settings.
+- Tray callbacks queue actions for the runtime, not reentrant taskbar work. Phantom-tray cleanup, remote Explorer memory writes and process-name killing are not ported.
 
-### Safety and limitations
+## Commands
 
-- MSAA/accessibility measurement failures must cause **safe skipping**, not guessed icon bounds or taskbar movement. Unsupported shell layouts are reported.
-- Composition APIs used for these styles are undocumented and can vary by Windows build, theme and other software.
-- Restoration is best effort. Appearance set by another taskbar utility cannot always be captured or exactly restored. Avoid running competing appearance tools.
-- Graceful close/stop attempts cleanup. Hard process termination, a crash or power loss can bypass cleanup. No promise of perfect restoration is made.
-- Automated verification does **not** exercise real taskbar positioning or styling. Its only live desktop probe is `diagnose --json`, which is read-only.
-
-## Command contract
-
-No arguments, `help`, and `--help` are safe: they must not apply settings or launch a taskbar-changing loop. Only an explicit `run` or GUI Apply/start applies settings.
+No arguments, `help` and `--help` are safe. Legacy forms such as `-tbs=1`, `-ptbo=0`, `-as=...` and `-stop` are not aliases.
 
 ```text
 taskbarx.exe
 taskbarx.exe --help
-taskbarx.exe run [--config PATH] [OPTIONS]
+taskbarx.exe run [--config PATH] [--background] [OPTIONS]
 taskbarx.exe stop [--timeout-ms N]
 taskbarx.exe diagnose [--json] [--config PATH]
 taskbarx.exe config show [--config PATH]
 taskbarx.exe config import --stdin [--config PATH]
 taskbarx.exe configure [--config PATH]
+taskbarx.exe startup status [--json]
+taskbarx.exe startup enable [--config PATH] [--delay-secs N] [--json]
+taskbarx.exe startup disable [--json]
+taskbarx.exe start-menu
+taskbarx.exe shortcut create --path PATH [--icon PATH] [--json]
+taskbarx.exe shortcut remove --path PATH [--json]
 taskbarx-configurator.exe [--engine PATH] [--config PATH]
 ```
 
 | `run` option | Meaning |
 | --- | --- |
 | `--primary-offset N`, `--secondary-offset N` | Signed offsets |
-| `--animation NAME` | Easing selection (below) |
-| `--animation-ms N` | Animation duration in milliseconds |
-| `--poll-ms N` | Discovery/measurement polling interval in milliseconds |
-| `--style NAME` | `default`, `transparent`, `blur`, `acrylic`, `opaque` |
-| `--color R,G,B,A` | Four integer bytes, each 0–255 |
-| `--no-center` | Disable centering; appearance remains separately configurable |
-| `--only-primary` / `--only-secondary` | Select one taskbar category; mutually exclusive |
-| `--center-between` | Center in the available free span instead of the full taskbar |
+| `--animation NAME`, `--animation-ms N` | Easing/duration |
+| `--poll-ms N` | Normal polling interval |
+| `--style NAME`, `--color R,G,B,A` | Appearance; four bytes, each 0-255 |
+| `--no-center` | Disable centering independently of appearance |
+| `--only-primary` / `--only-secondary` | Mutually exclusive taskbar selection |
+| `--center-between` | Center between leading controls and tray |
+| `--background` | Explicit background launch; never enables startup |
 
-`run` loads the selected configuration and applies explicit overrides. Use JSON import or GUI Save for persistence; do not assume run overrides are saved. `stop` requests graceful restoration and shutdown of the existing engine, waiting up to the supplied timeout. `diagnose` is read-only, including when given a config path. `config show` prints settings and does **not** create a missing file. `config import --stdin` validates and saves but does **not** start or apply anything. `configure` launches the sibling GUI; keep both executables together. The GUI's `--engine PATH` selects an engine explicitly.
+`run` overrides are not persisted. Other settings use the GUI or JSON import. `stop` requests graceful cleanup with a timeout. `config show` does not create a missing file; `config import --stdin` saves without applying. `configure` opens the sibling GUI; keep both executables together or supply the GUI's `--engine PATH`.
 
-Safe inspection examples (PowerShell):
+Startup status is read-only. Startup JSON is the direct `StartupStatus` object. Enable/Disable reports OS errors, not false success. Enabling registers a current-user launch with the selected config/delay; it does not immediately run it. Keep executable/config paths stable, or explicitly update/disable registration before moving the folder.
+
+The task name and ownership marker include the current user's SID; its sole logon trigger uses an interactive, least-privilege principal, permits battery operation and has a validated delay. Inaccessible status is an error, not "absent"; a disabled logon trigger reports effective `enabled:false`. Updates validate the complete prepared XML first. Failed-update rollback only replaces that exact prepared definition and re-verifies the prior definition; interference or inaccessible state produces an honest failure, not an overwrite or a false restoration claim.
+
+`start-menu` explicitly requests Start, not centering. Success confirms bounded `SC_TASKLIST` message delivery, not a visual-open assertion. Shortcut creation writes an owned `.lnk` to that action, optionally with a user-supplied icon. Unrelated existing files/shortcuts must not be overwritten or removed. Success JSON is `{"ok":true,"path":"..."}`. **Pinning remains a manual Windows shell action**; OS pinning restrictions are not bypassed.
+
+Shell paths must be absolute, valid Unicode and NUL-free. Task Scheduler rejects XML 1.0-invalid controls and `%...%` expansion; Shell Link target/working-directory/icon paths of 260 UTF-16 units or longer, or containing `%`, fail explicitly rather than truncate or expand. Shortcut parent directories must already exist. A supplied icon's availability, format and rights are the user's responsibility. The tray copies Windows' system `IDI_APPLICATION` icon; no bundled/runtime icon asset is required. See [shell APIs and limitations](docs/SHELL.md).
+
+Safe inspection:
 
 ```powershell
 .\taskbarx.exe diagnose --json
 .\taskbarx.exe config show
+.\taskbarx.exe startup status --json
 ```
 
 Intentional user actions, **not automated tests**:
 
 ```powershell
-# Save only. This does not apply settings.
+# Save only; no taskbar or startup change.
 Get-Content -Raw .\settings.sample.json | .\taskbarx.exe config import --stdin
-# Apply explicitly. While it is running, use a SECOND PowerShell window to stop.
-.\taskbarx.exe run --primary-offset -20 --animation cubiceaseinout --style blur --color '0,0,0,128'
-# In the second window, from the executable's directory:
+# Apply explicitly; issue stop from a second PowerShell window.
+.\taskbarx.exe run --primary-offset -20 --style blur --color '0,0,0,128'
 .\taskbarx.exe stop --timeout-ms 5000
+# Startup is a separate explicit action:
+.\taskbarx.exe startup enable --delay-secs 6 --json
+.\taskbarx.exe startup disable --json
 ```
-
-The rewrite does not accept upstream forms such as `-tbs=1`, `-ptbo=0`, `-as=...` or `-stop`. Translate settings into the new contract instead.
 
 ### Easing selections (42)
 
-`none`, `linear`, and each combination of these ten prefixes with the four suffixes:
-
-- Prefix: `quad`, `cubic`, `quart`, `quint`, `sine`, `expo`, `circ`, `back`, `elastic`, `bounce`.
-- Suffix: `easein`, `easeout`, `easeinout`, `easeoutin`.
-
-For example: `cubiceaseinout`, `backeaseout`, `bounceeaseoutin`. `none` means immediate positioning rather than animation.
+`none`, `linear`, plus ten prefixes (`quad`, `cubic`, `quart`, `quint`, `sine`, `expo`, `circ`, `back`, `elastic`, `bounce`) combined with four suffixes (`easein`, `easeout`, `easeinout`, `easeoutin`). Example: `cubiceaseinout`. `none` positions immediately. Pure tests do not establish visual smoothness.
 
 ## Settings
 
-Default path: `%APPDATA%\TaskbarX-Rust\settings.json`. `--config PATH` selects a different file. Defaults and [the packaged sample](docs/settings.sample.json) use schema version 1:
+Default: `%APPDATA%\TaskbarX-Rust\settings.json`. `--config PATH` selects another file; the portable folder does not implicitly become the settings directory. [Complete schema-1 defaults](docs/settings.sample.json):
 
-```json
-{
-  "schema_version": 1,
-  "center": true,
-  "primary": true,
-  "secondary": true,
-  "center_between": false,
-  "primary_offset": 0,
-  "secondary_offset": 0,
-  "animation": "cubiceaseinout",
-  "animation_ms": 300,
-  "poll_ms": 400,
-  "style": "default",
-  "color": [0, 0, 0, 128]
-}
-```
+| Fields | Defaults / units |
+| --- | --- |
+| `schema_version` | `1` |
+| `center`, `primary`, `secondary` | `true` |
+| `center_between` | `false` |
+| `primary_offset`, `secondary_offset` | `0`, signed physical pixels |
+| `animation`, `animation_ms`, `poll_ms` | `"cubiceaseinout"`, `300`, `400` ms |
+| `style`, `color` | `"default"`, `[0, 0, 0, 128]` RGBA |
+| `primary_opacity`, `secondary_opacity` | `null` leaves unchanged; otherwise **percent 0-100**, including zero |
+| `corner_radius`, `taskbar_segments` | `0` pixels, `false` |
+| `default_style_on_maximized` | `false`; enabled policy affects the relevant monitor |
+| `battery_animation`, `battery_poll_ms` | `null`: inherit normal values |
+| `skip_resolutions` | `[]`: primary-monitor widths suspending centering only |
+| `pause_on_fullscreen` | `false` |
+| `hide_primary_start`, `hide_secondary_start` | `false` |
+| `hide_primary_tray`, `hide_secondary_tray` | `false` |
+| `revert_on_tray_overlap` | `false` |
+| `toolbar_compensation` | `true` |
+| `tray_icon` | `false` |
+| `startup_delay_secs` | `6`; preference only, never implicit registration/update |
+| `measurement` | `"msaa"`; alternate `"uia"` |
+| `show_console` | `false` |
 
-RGBA alpha is a **byte (0–255)**, not upstream's percentage (0–100). For instance, alpha 128 is approximately half opacity; upstream's value 50 is not equivalent to byte 50. Invalid values/schema versions must be rejected rather than silently applied. Numeric validation boundaries are owned by `taskbarx-config` and must agree with CLI/UI tests.
+Existing schema-1 defaults remain unchanged. Missing fields default; unknown fields, types, versions and out-of-range values fail validation. Shared validation is authoritative; CLI/GUI must not silently clamp errors. RGBA alpha is a **byte (0-255)**, not upstream's percentage: alpha 128 is about half opacity, whereas byte 50 is not upstream alpha 50. Total taskbar opacity is a separate percentage.
 
-The portable folder does not automatically become the settings directory. Use `--config` for an explicit local file. GUI **Save** only persists; **Apply/start** is a separate, explicit action. Startup registration is not included.
+## Build, verify and package locally
 
-## Build from source, verify and create a local package
-
-Run these scripts in a source checkout, not the portable binary folder. After all branches are merged, use Windows PowerShell 5.1 or newer on Windows x64 with the native `x86_64-pc-windows-msvc` Rust toolchain, Cargo, rustfmt, and the MSVC C++ build tools/Windows SDK. Clippy is optional. No Node/npm build is involved.
+Use a source checkout, PowerShell 5.1+, Windows x64, native `x86_64-pc-windows-msvc` Rust/Cargo, **rustfmt and Clippy**, MSVC C++ tools and Windows SDK. No npm or upstream .NET build.
 
 ```powershell
 powershell.exe -NoProfile -File .\scripts\test-helpers.ps1
 powershell.exe -NoProfile -File .\scripts\verify.ps1
-# Optional lint gate:
-powershell.exe -NoProfile -File .\scripts\verify.ps1 -Clippy
 powershell.exe -NoProfile -File .\scripts\release.ps1
 ```
 
-Scripts resolve the repository from their own location, not your current directory. Missing packages are a hard **post-integration required** error, not a passing test. Verification checks format, tests and builds the entire workspace and captures JSON diagnostics. An absent root `Cargo.lock` is generated by Cargo only once a complete workspace exists; subsequent resolving commands use `--locked`. The integration owner must review and commit that generated lockfile.
+Required gates: format, workspace tests, Clippy with warnings denied and real compiler-reported binaries; release requires the workspace release build. Dependency-resolving commands use `--locked`. Unique safe target/evidence directories avoid accepting stale artifacts and preserve old output. Scripts never run/stop the engine, open the GUI, register startup, create live shortcuts or restart Explorer. Only read-only diagnostics may probe the desktop.
 
-Release repeats verification and builds the actual combined workspace in release mode. Each invocation preserves previous output and creates a uniquely named portable folder under `dist/TaskbarX-Rust/`, a local ZIP, SHA-256 checksums and evidence. Binaries are real Cargo artifacts, never copied/renamed upstream executables. The release process does not launch the GUI or release binaries, sign, publish, push, upload, install, schedule startup, or restart Explorer. `dist/` contains generated outputs, not source to commit.
+The default Cargo target is a unique `dist/cargo-target/<id>` directory. An explicit `CARGO_TARGET_DIR` may be outside the checkout, but must be an absolute new/empty directory, outside this checkout's `target/` and `app/` trees, with no reparse-point ancestors. Relative, occupied or reparse paths are rejected. Script-only helper fixtures/logs use a unique `%TEMP%/TaskbarX-Rust-script-tests-<id>` directory, not release evidence under `dist/`.
 
-This is a repeatable build procedure, **not a claim of bit-for-bit reproducible archives**: timestamps, toolchains, linker/SDK and environment can affect output. Metadata records tool versions, lockfile hash and read-only diagnostic scope. Read [TESTING](docs/TESTING.md) and [INTEGRATION](docs/INTEGRATION.md) before interpreting a successful build as release readiness.
+Release repeats verification and emits both Rust executables, documents/sample, dependency inventory, SHA-256 checksums and a local ZIP under unique `dist/` paths. It does not sign, publish, upload, install, push or alter an existing `app/` deployment. This is a repeatable locked procedure, **not a byte-identical archive guarantee**. See [release acceptance](docs/INTEGRATION.md).
 
 ## License and attribution
 
-The complete upstream MIT license, including **Copyright (c) 2021 Chris Andriessen**, is preserved verbatim in [LICENSE](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for provenance, asset exclusions and dependency-review requirements. The source license must not be assumed to license every binary or image found in upstream distribution folders. No upstream signing key or certificate is included or used.
+[LICENSE](LICENSE) preserves upstream's MIT license and **Copyright (c) 2021 Chris Andriessen**. See [third-party notices](THIRD_PARTY_NOTICES.md). No upstream executable, Store asset, signing key or certificate is included or used. Upstream update/version checks describe the upstream product, not releases of this rewrite.

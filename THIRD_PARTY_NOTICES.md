@@ -2,25 +2,29 @@
 
 ## TaskbarX by Chris Andriessen
 
-- Upstream project: [ChrisAnd1998/TaskbarX](https://github.com/ChrisAnd1998/TaskbarX).
+- Upstream: [ChrisAnd1998/TaskbarX](https://github.com/ChrisAnd1998/TaskbarX).
 - Copyright (c) 2021 Chris Andriessen.
-- Source license: MIT. The complete upstream `LICENSE` is copied **verbatim** into this repository's `LICENSE` and must accompany the portable package.
-- This project is an independent Rust rewrite, not an official upstream release or an endorsement by the upstream author.
+- Source license: MIT. The complete upstream license is preserved in this repository's [LICENSE](LICENSE) and must accompany the portable package.
+- This is an independent Rust rewrite, not an official upstream release or endorsement.
 
-The local reference reviewed for the rewrite comprises upstream `README.md`, `TaskbarX/TaskbarX/TaskbarX.vbproj`, `Main.vb`, `Settings.vb`, `TaskbarCenter.vb`, `TaskbarStyle.vb`, `Easings.vb`, and `TaskbarX Configurator/TaskbarX Configurator/MainWindow.xaml.vb`. It informs geometry/easing behavior, shell discovery, appearance, configuration and explicit differences from legacy behavior. Preserve upstream attribution for derived source or formulas.
+[The parity inventory](docs/PARITY.md) records the seven fully reviewed local source files, line counts and SHA-256 hashes: Settings.vb, Main.vb, TaskbarStyle.vb, TaskbarCenter.vb, TrayIconBuster.vb, MainWindow.xaml and MainWindow.xaml.vb. Related geometry/animation reference includes TaskbarAnimate.vb and Easings.vb. Preserve attribution for derived source/formulas.
+
+Review does not imply copying every behavior. Process-name killing, upstream task migration, Store activation/uninstall and phantom-tray remote-memory cleanup are deliberately excluded. The hidden/disabled/dormant upstream controls are documented without representing them as working features.
 
 ## Excluded upstream material
 
-No upstream executable is a Rust build output. Do not redistribute or rename upstream EXEs/DLLs as the rewrite, and do not copy signing keys, PFX files, certificates or Store packaging credentials. The upstream project file references a signing-key file; that is not permission to use it.
+No upstream executable is a Rust build output. Do not redistribute or rename upstream EXEs/DLLs as the rewrite. No signing keys, PFX files, certificates or Store packaging credentials are copied or used. A project-file reference to a signing key is not permission to use it.
 
-Do not assume bundled icons, screenshots, installers, compiled libraries, Store assets or other binary assets have the same license as upstream source. None is required by these packaging scripts. Adding any such asset requires separate provenance and license review first.
+Do not assume bundled icons, screenshots, fonts, installers, compiled libraries or Store assets share the source license. The release procedure does not need these assets. Any future inclusion requires separate provenance/license review. User-supplied shortcut icons are not upstream bundled assets.
 
-Upstream's README mentions ModernWPF, TaskScheduler and Emoji.Wpf. These are upstream references, **not a declaration that this Rust workspace includes or redistributes them**. Their licenses must not be inferred from TaskbarX's MIT license.
+The native tray loads Windows' shared `IDI_APPLICATION` icon and owns a `CopyIcon` copy for cleanup. It does not require a redistributed or runtime-loaded icon asset. Optional shortcut icons remain user-supplied; their availability, format and licensing are the user's responsibility.
 
-## Rust dependency inventory: integration review required
+Upstream references ModernWPF, TaskScheduler and Emoji.Wpf; this does **not** declare those .NET libraries to be Rust dependencies. Their licenses cannot be inferred from TaskbarX's MIT license. Upstream VERSION/release checks describe upstream TaskbarX, not releases of this independent product.
 
-The documentation worktree has no combined Cargo dependency graph or lockfile. A complete third-party dependency notice list cannot honestly be asserted here. During integration, review the actual `Cargo.lock`, Cargo metadata and every distributed dependency's license texts/notice obligations. Update this file (and add required license texts under `docs/licenses/`) before distributing a package outside the local validation workflow.
+## Rust dependency review
 
-`release.ps1` records the resolved package names, versions, source identifiers and declared license expressions in `evidence/dependency-inventory.json`, alongside the complete Cargo metadata. This is an **inventory, not a license-compliance certification**. License expressions alone do not replace required license texts. Missing/ambiguous license metadata, vendored code, fonts or other resources require manual review. The local ZIP is a validation candidate, not permission to publish.
+Review the **actual integrated Cargo.lock and Cargo metadata**, including `taskbarx-shell`, before external distribution. The release procedure records resolved package names, versions, sources and declared license expressions in `evidence/dependency-inventory.json`, alongside Cargo metadata.
 
-The portable package includes `docs/` so reviewed supplemental notices placed there travel with it. No signing, upload or publication is performed by the scripts.
+That file is an **inventory, not a license-compliance certification**. Declared expressions alone do not replace required copyright/license texts. Missing/ambiguous metadata, vendored source, fonts and resources need manual review. Add required supplemental notices/texts under `docs/licenses/`; `docs/` is included in the portable package. Rebuild/package after notice changes.
+
+A local validation ZIP is not a claim that redistribution obligations have been fully reviewed or permission to publish. The scripts do not sign, upload or publish.
