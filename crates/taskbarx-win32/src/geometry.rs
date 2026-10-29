@@ -161,6 +161,75 @@ pub(crate) fn is_hidden(state: i32) -> bool {
     state & (0x8000 | 0x10000) != 0
 }
 
+/// Build root-client-relative unions. Rounded backgrounds never remove any
+/// measured occupied control/button pixels. Unknown/empty content fails closed.
+pub(crate) fn region_parts(
+    l: &crate::effects::Layout,
+    f: &crate::TaskbarFeatures,
+) -> Result<Vec<crate::effects::RegionPart>, String> {
+    use crate::effects::RegionPart;
+    let root = l.client;
+    let content = l
+        .snapshot
+        .content_rect
+        .ok_or("Region suspended: no reliable occupied buttons")?;
+    if !root.contains(content) {
+        return Err("Region suspended: content outside root client".into());
+    }
+    let width = root
+        .right
+        .checked_sub(root.left)
+        .ok_or("Region width overflow")?;
+    let height = root
+        .bottom
+        .checked_sub(root.top)
+        .ok_or("Region height overflow")?;
+    let radius = f.corner_radius.min((width.min(height) / 2) as u32);
+    let local = |r: Rect| -> Result<Rect, String> {
+        Ok(Rect {
+            left: r.left.checked_sub(root.left).ok_or("Region overflow")?,
+            top: r.top.checked_sub(root.top).ok_or("Region overflow")?,
+            right: r.right.checked_sub(root.left).ok_or("Region overflow")?,
+            bottom: r.bottom.checked_sub(root.top).ok_or("Region overflow")?,
+        })
+    };
+    let background = if !f.segments {
+        root
+    } else if l.snapshot.vertical {
+        Rect {
+            top: content.top,
+            bottom: content.bottom,
+            ..root
+        }
+    } else {
+        Rect {
+            left: content.left,
+            right: content.right,
+            ..root
+        }
+    };
+    let mut parts = vec![
+        RegionPart {
+            rect: local(background)?,
+            radius,
+        },
+        RegionPart {
+            rect: local(content)?,
+            radius: 0,
+        },
+    ];
+    for c in l.controls.iter().filter(|c| c.visible) {
+        if !root.contains(c.rect) {
+            return Err("Region suspended: reserved control extends outside root client".into());
+        }
+        parts.push(RegionPart {
+            rect: local(c.rect)?,
+            radius: 0,
+        });
+    }
+    Ok(parts)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -174,3 +174,27 @@ fn elapsed_budget_is_checked_without_sleeping() {
     w.start = Instant::now() - MAX_ELAPSED - Duration::from_millis(1);
     assert!(w.object(&1, 0, false).is_err());
 }
+
+#[test]
+fn automation_roles_use_the_same_conservative_occupied_bounds_walk() {
+    for (uia, role) in [
+        (50000, 0x2b),
+        (50002, 0x2b),
+        (50013, 0x2b),
+        (50007, 0x2b),
+        (50021, 0x16),
+        (50008, 0x16),
+        (50033, 0x10),
+        (50020, 0x10),
+    ] {
+        assert_eq!(automation_role(uia), role);
+    }
+    let mut f = tree();
+    f.nodes.get_mut(&(2, 0)).unwrap().role = automation_role(50021);
+    f.nodes.get_mut(&(3, 0)).unwrap().role = automation_role(50008);
+    f.nodes.get_mut(&(4, 0)).unwrap().role = automation_role(50007);
+    assert_eq!(walk(f).unwrap(), r(-900, -777));
+    let mut f = tree();
+    f.nodes.get_mut(&(4, 0)).unwrap().rect = Some(r(1, 100));
+    assert!(walk(f).is_err()); // physical screen bounds, not DIP-scaled/guessed
+}

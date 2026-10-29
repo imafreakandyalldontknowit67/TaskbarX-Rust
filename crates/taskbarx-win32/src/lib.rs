@@ -2,10 +2,19 @@
 //! positions are immediate-parent client coordinates. No background loops run.
 //!
 //! A session is thread-bound (COM apartment ownership) and restores only its own
-//! successful mutations. Discovery and dropping a read-only session never alter
+//! attempted mutations, including partial failures. Discovery and dropping a read-only session never alter
 //! the shell. Native Windows 11 taskbars are deliberately unsupported.
 //! Run discovery on a dedicated thread: traversal has depth/node/time budgets,
-//! but an individual out-of-process MSAA call has no per-call timeout.
+//! but an individual out-of-process accessibility call has no per-call timeout.
+//! UI Automation is explicitly selected and never falls back to MSAA. Its native
+//! bounding rectangles are physical pixels, not DIPs. Call `environment` first
+//! when deciding whether to suspend accessibility polling in fullscreen apps.
+//! Discovery remains read-only even if it finds an unsafe layout; callers should
+//! restore that root or call an effect/movement method to suspend an owned region.
+//! Region updates always preserve measured occupied pixels, so rounding can be
+//! less pronounced when controls occupy the very edge of the taskbar.
+//! Toolbar position cleanup refuses obsolete DPI/orientation coordinates and
+//! retains the entry for retry; no redraw state is disabled or modified.
 //!
 //! Accent APIs are undocumented and dynamically resolved. If the original accent
 //! cannot be queried, restoration disables our accent and sends WM_THEMECHANGED
@@ -70,13 +79,68 @@ pub struct Discovery {
 pub enum Style {
     Default,
     Transparent,
+    TransparentGradient,
     Blur,
     Acrylic,
     Opaque,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MeasurementBackend {
+    Msaa,
+    UiAutomation,
+}
+
+#[derive(Debug, Clone)]
+pub struct MonitorState {
+    pub bounds: Rect,
+    pub primary: bool,
+    pub maximized: bool,
+    pub fullscreen: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnvironmentSnapshot {
+    pub on_battery: Option<bool>,
+    pub monitors: Vec<MonitorState>,
+    /// Failed/uncertain queries must not be interpreted as definitive absence.
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskbarFeatures {
+    pub style: Style,
+    pub color: [u8; 4],
+    /// Total window opacity in percent, independent of color alpha. None restores.
+    pub opacity: Option<u8>,
+    /// Radius in physical pixels; clamped to the measured taskbar dimensions.
+    pub corner_radius: u32,
+    pub segments: bool,
+    pub hide_start: bool,
+    pub hide_tray: bool,
+    pub toolbar_compensation: bool,
+}
+impl Default for TaskbarFeatures {
+    fn default() -> Self {
+        Self {
+            style: Style::Default,
+            color: [0, 0, 0, 128],
+            opacity: None,
+            corner_radius: 0,
+            segments: false,
+            hide_start: false,
+            hide_tray: false,
+            toolbar_compensation: true,
+        }
+    }
+}
+
 #[cfg(windows)]
 mod accessibility;
+#[cfg(any(windows, test))]
+mod effects;
+#[cfg(windows)]
+mod environment;
 #[cfg(any(windows, test))]
 mod geometry;
 #[cfg(windows)]
@@ -93,6 +157,61 @@ pub struct Session {
 }
 
 impl Session {
+    /// No accessibility calls or shell mutations. Suitable before discovery.
+    pub fn environment(&mut self) -> Result<EnvironmentSnapshot, String> {
+        #[cfg(windows)]
+        {
+            self.inner.environment()
+        }
+        #[cfg(not(windows))]
+        {
+            Err(unsupported())
+        }
+    }
+
+    /// Selects the requested provider, or fails explicitly; never substitutes MSAA.
+    pub fn set_measurement_backend(&mut self, backend: MeasurementBackend) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            self.inner.set_measurement_backend(backend)
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = backend;
+            Err(unsupported())
+        }
+    }
+
+    /// Returns true after layout-affecting changes; rediscover before moving.
+    pub fn apply_features(
+        &mut self,
+        id: &TaskbarId,
+        features: &TaskbarFeatures,
+    ) -> Result<bool, String> {
+        #[cfg(windows)]
+        {
+            self.inner.apply_features(id, features)
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = (id, features);
+            Err(unsupported())
+        }
+    }
+
+    /// Restore only this root identity and its journaled children, even if its
+    /// task-list has since been replaced. Failed entries remain retryable.
+    pub fn restore_taskbar(&mut self, id: &TaskbarId) -> Vec<String> {
+        #[cfg(windows)]
+        {
+            self.inner.restore_taskbar(id)
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = id;
+            vec![unsupported()]
+        }
+    }
     pub fn new() -> Result<Self, String> {
         #[cfg(windows)]
         {

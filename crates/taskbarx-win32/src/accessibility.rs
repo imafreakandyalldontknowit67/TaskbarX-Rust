@@ -328,6 +328,159 @@ pub(crate) fn content(hwnd: HWND, clip: Rect) -> Result<Rect, String> {
     })
 }
 
+use windows::Win32::{
+    System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
+    UI::Accessibility::{
+        CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTreeWalker,
+    },
+};
+
+/// Owning COM interfaces drop before the Session's apartment. UIA coordinates
+/// are already physical screen pixels, including negative origins; do NOT apply
+/// a second DPI multiplier. The caller enters per-monitor awareness first.
+pub(crate) struct Automation {
+    client: IUIAutomation,
+}
+impl Automation {
+    pub fn new() -> Result<Self, String> {
+        let client = unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }
+            .map_err(|e| format!("UI Automation provider unavailable: {e}"))?;
+        Ok(Self { client })
+    }
+    pub fn content(&self, hwnd: HWND, clip: Rect) -> Result<Rect, String> {
+        let element = unsafe { self.client.ElementFromHandle(hwnd) }
+            .map_err(|e| format!("UIA ElementFromHandle: {e}"))?;
+        let process =
+            unsafe { element.CurrentProcessId() }.map_err(|e| format!("UIA process: {e}"))?;
+        let mut actual = 0;
+        unsafe {
+            windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(
+                hwnd,
+                Some(&mut actual),
+            )
+        };
+        if process <= 0 || process as u32 != actual {
+            return Err("UIA task-list process identity mismatch".into());
+        }
+        let walker =
+            unsafe { self.client.RawViewWalker() }.map_err(|e| format!("UIA raw walker: {e}"))?;
+        let mut walk = Walk::new(
+            AutomationProvider {
+                walker,
+                process,
+                identities: vec![],
+                start: Instant::now(),
+            },
+            clip,
+        );
+        walk.object(&element, 0, false)
+            .map_err(|e| format!("UIA measurement: {e}"))?;
+        walk.bounds.ok_or_else(|| {
+            "UIA found no reliable occupied task buttons; MSAA was not substituted".into()
+        })
+    }
+}
+struct AutomationProvider {
+    walker: IUIAutomationTreeWalker,
+    process: i32,
+    identities: Vec<IUnknown>,
+    start: Instant,
+}
+fn automation_role(control_type: i32) -> i32 {
+    match control_type {
+        50021 | 50008 => 0x16,
+        50000 | 50002 | 50013 | 50007 => 0x2b,
+        _ => 0x10,
+    }
+}
+// Preserve successful null (end of siblings) versus provider failure. Generated
+// wrappers otherwise turn both into errors, risking a silently partial union.
+fn automation_child(
+    walker: &IUIAutomationTreeWalker,
+    node: &IUIAutomationElement,
+    first: bool,
+) -> Result<Option<IUIAutomationElement>, String> {
+    unsafe {
+        let mut raw = std::ptr::null_mut();
+        let method = if first {
+            walker.vtable().GetFirstChildElement
+        } else {
+            walker.vtable().GetNextSiblingElement
+        };
+        let hr = method(walker.as_raw(), node.as_raw(), &mut raw);
+        let output = if raw.is_null() {
+            None
+        } else {
+            Some(IUIAutomationElement::from_raw(raw))
+        };
+        hr.ok().map_err(|e| format!("UIA tree navigation: {e}"))?;
+        Ok(output)
+    }
+}
+impl Provider for AutomationProvider {
+    type Object = IUIAutomationElement;
+    fn identity(&mut self, o: &Self::Object) -> Result<usize, String> {
+        if unsafe { o.CurrentProcessId() }.map_err(|e| e.to_string())? != self.process {
+            return Err("UIA subtree crosses process identities".into());
+        }
+        let identity = o.cast::<IUnknown>().map_err(|e| e.to_string())?;
+        let key = identity.as_raw() as usize;
+        self.identities.push(identity);
+        Ok(key)
+    }
+    fn state(&mut self, o: &Self::Object, _: i32) -> Result<i32, String> {
+        Ok(
+            if unsafe { o.CurrentIsOffscreen() }
+                .map_err(|e| e.to_string())?
+                .as_bool()
+            {
+                0x10000
+            } else {
+                0
+            },
+        )
+    }
+    fn role(&mut self, o: &Self::Object, _: i32) -> Result<i32, String> {
+        Ok(automation_role(
+            unsafe { o.CurrentControlType() }
+                .map_err(|e| e.to_string())?
+                .0,
+        ))
+    }
+    fn location(&mut self, o: &Self::Object, _: i32) -> Result<Rect, String> {
+        let r = unsafe { o.CurrentBoundingRectangle() }.map_err(|e| e.to_string())?;
+        let r = Rect {
+            left: r.left,
+            top: r.top,
+            right: r.right,
+            bottom: r.bottom,
+        };
+        if !r.valid() {
+            return Err("UIA button bounds empty/reversed".into());
+        }
+        Ok(r)
+    }
+    fn children(
+        &mut self,
+        o: &Self::Object,
+        limit: usize,
+    ) -> Result<Vec<Child<Self::Object>>, String> {
+        let mut children = vec![];
+        let mut next = automation_child(&self.walker, o, true)?;
+        while let Some(node) = next {
+            if children.len() >= limit || self.start.elapsed() > MAX_ELAPSED {
+                return Err("UIA traversal budget exceeded".into());
+            }
+            next = automation_child(&self.walker, &node, false)?;
+            children.push(Child::Object(node));
+        }
+        Ok(children)
+    }
+    fn object_child(&mut self, _: &Self::Object, _: i32) -> Result<Option<Self::Object>, String> {
+        Err("UIA has no integer children".into())
+    }
+}
+
 #[cfg(test)]
 #[path = "accessibility_tests.rs"]
 mod tests;
