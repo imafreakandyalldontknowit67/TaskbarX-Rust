@@ -3,3 +3,8 @@ reference/
 .worktrees/
 tasks*.json
 
+# The workspace owns the only committed lockfile.
+**/target/
+/crates/**/Cargo.lock
+dist/
+
