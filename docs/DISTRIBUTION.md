@@ -96,7 +96,7 @@ On PowerShell 5.1+, `scripts/package-distribution.ps1` has three mandatory argum
 
 Output must be nonexistent or empty, including hidden entries, and must not overlap the binary directory. Reparse points and reparse-point ancestors are rejected. Files are created exclusively; existing output is not overwritten, and partial archives are retained on failure.
 
-The script's optional `-Version` currently defaults to `0.1.1`; the examples explicitly select `0.1.2`. This changes archive labels, not executable versions. The source versions, matching binaries and intended source tag must agree before packaging.
+The script's optional `-Version` currently defaults to `0.1.2`; the examples explicitly select `0.1.2`. This changes archive labels, not executable versions. The source versions, matching binaries and intended source tag must agree before packaging.
 
 Illustrative commands from a source checkout; replace the placeholder paths with verified v0.1.2 pairs and fresh outputs. These examples do not establish that those binaries exist:
 
@@ -131,3 +131,9 @@ Keep `LICENSE`, `THIRD_PARTY_NOTICES.md` and applicable `docs/licenses/` texts w
 Upstream-like architecture and Rainmeter choices do not require upstream .NET internals. This native Rust rewrite does not need upstream ModernWPF, TaskScheduler or Emoji.Wpf DLLs or their resource directories; upstream binaries must never be relabeled as Rust builds. Actual dependencies are determined by Cargo, and this does **not** imply every system dependency is statically linked.
 
 Preserve Chris Andriessen's attribution and Copyright (c) 2021 under the [MIT license](../LICENSE), plus [third-party notices](../THIRD_PARTY_NOTICES.md) and [dependency license texts](licenses/README.md). The repository banner is an original AI-generated conceptual illustration, not an application screenshot or upstream-derived artwork, and is not bundled; see [artwork provenance](assets/README.md). Neither the project nor its package format implies upstream, Rainmeter, Rust project or Rust Foundation endorsement.
+
+## Distribution checks
+
+Verification enables source-path remapping automatically. Before manual cross-compilation, run `. ./scripts/set-build-path-remapping.ps1` in the build shell. Packaging checks both executables and the completed archives for home-directory paths and credential-shaped content; detected findings stop packaging. These heuristic checks complement code review, not replace it.
+
+Run the scanner independently with `./scripts/check-distribution-privacy.ps1 -Path <package>` and check `$LASTEXITCODE`. Fixture tests are in `scripts/test-distribution-privacy.ps1`.

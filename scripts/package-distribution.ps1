@@ -330,18 +330,16 @@ opens only the bundled configurator, not the engine. Use Apply/start and the
 separate Startup Enable/update action as described above. No automatic Load,
 plugins, layouts, installation hooks or startup changes are supplied.
 
-LIMITS / RELEASE REVIEW
-These are unsigned packages, not signed or certified releases. Packaging
-checks the declared PE machine type of BOTH files, not genuine build provenance,
-runtime compatibility, complete license compliance, or safety. Choose the
-architecture appropriate to your Windows system. Rainmeter's footer does not
-enforce processor compatibility and provides no signing or authentication.
-The runtime targets classic Windows taskbars; do not assume stock Windows 11
-taskbar support, feature parity, or tested x86/ARM64 runtime behavior. Each real
-build and Windows/taskbar combination requires independent validation.
-Binary bytes are preserved, including any embedded compiler paths; the build
-owner must review those separately. External build-path metadata is excluded.
-Nothing in this package establishes permission or readiness to publish.
+COMPATIBILITY
+These unsigned packages target the Windows 10 classic taskbar. Modern Windows 11
+taskbars are unsupported. Choose the architecture appropriate for your Windows
+installation and keep Windows security checks enabled. No .NET runtime is needed;
+Windows system libraries are still required.
+
+Actual sign-in launch and most visual effects have not been live-tested. Native
+32-bit Windows and live Rainmeter installation remain unvalidated. See the online
+user guide for supported settings, command-line usage, and compatibility details.
+
 "@)
     )
     $skin = "Skins/TaskbarX-Rust-$Architecture"

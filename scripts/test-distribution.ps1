@@ -273,8 +273,8 @@ function Assert-PortablePayload {
     $readme = [Text.Encoding]::UTF8.GetString($Members[$Prefix + 'README.txt'])
     foreach ($pattern in @([regex]::Escape($Version), [regex]::Escape($Architecture), 'stable folder',
         'Opening\s+settings does not start', 'Apply/start', 'Startup Enable/update', '%APPDATA%\\TaskbarX-Rust\\settings.json',
-        'unsigned', 'Independent Rust rewrite', 'Chris Andriessen', 'Windows 11', 'not genuine build provenance',
-        'footer does not\s+enforce processor compatibility', 'embedded compiler paths')) {
+        'unsigned', 'Independent Rust rewrite', 'Chris Andriessen', 'Windows 11', 'Windows 10',
+        'architecture', 'security checks')) {
         Assert-Test ($readme -match $pattern) "Bundled instructions cover: $pattern"
     }
     Assert-Test ($readme -notmatch [regex]::Escape($scratch)) 'Generated instructions contain no absolute fixture/build paths'
