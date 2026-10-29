@@ -6,22 +6,27 @@
 
 An **independent Rust rewrite of Chris Andriessen's [TaskbarX](https://github.com/ChrisAnd1998/TaskbarX)** for taskbar positioning and appearance. Not an official upstream release.
 
-**v0.1.0 is an unsigned initial release**, targeting **native Windows 10 x64 with the classic Explorer taskbar only**.
+**v0.1.0 is an unsigned initial release**. The existing tested scope is **native Windows 10 x64 with the classic Explorer taskbar**, not comprehensive feature certification.
 
 ## Downloads / quick start
 
-- **Primary download — [taskbarx-configurator.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx-configurator.exe):** the settings GUI and the file to open.
-- **REQUIRED companion engine — [taskbarx.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx.exe):** download this too; the configurator needs it to run TaskbarX.
+**Choose an architecture-specific portable ZIP if attached to the [v0.1.0 release page](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.0).** Downloads require access while this repository is private. These are planned package names, not confirmation that builds or uploads exist:
 
-**Download BOTH EXEs into the SAME stable folder, then launch `taskbarx-configurator.exe`.** See the [v0.1.0 release page](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.0).
+| Architecture | Primary portable ZIP, if available | Optional Rainmeter package, if available |
+| --- | --- | --- |
+| x64 | `TaskbarX-Rust_0.1.0_x64.zip` | `TaskbarX-Rust_0.1.0_x64.rmskin` |
+| x86 | `TaskbarX-Rust_0.1.0_x86.zip` | `TaskbarX-Rust_0.1.0_x86.rmskin` |
+| ARM64 | `TaskbarX-Rust_0.1.0_arm64.zip` | None |
 
-This initial release is unsigned; keep Windows security checks enabled. Downloads require access while this repository is private.
+**x86 and ARM64 are build candidates, not runtime-verified platforms.** Packaging support, compilation, runtime verification and uploaded availability are distinct. There is no neutral/AnyCPU executable or supported ARM32 package; architecture matching does not establish shell compatibility. See [package selection, evidence and layouts](docs/DISTRIBUTION.md).
 
-1. Download both EXEs above into the same stable folder; no extraction is needed.
-2. Open `taskbarx-configurator.exe`. Opening the GUI **does not start the engine**.
+1. If the matching ZIP is available, download it and **extract all files into a stable folder**, keeping both EXEs together. Keep Windows security checks enabled; the binaries are unsigned.
+2. Open `Open Settings.cmd` or `taskbarx-configurator.exe`. Opening settings **does not start the engine**.
 3. Select your settings and press **Apply** to save and start/restart the engine. **Save** only persists JSON; **Apply never enables startup**.
 
-The direct downloads contain only the two EXEs, not `Open Settings.cmd`, sample files or packaged documentation. GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives contain source, **not the ready-to-run application**. They are GitHub-generated and cannot be removed as uploaded release assets. [Locally generated packages](docs/USER-GUIDE.md#build-verify-and-package-locally) are separate from these release downloads.
+The ZIP contract includes both EXEs, `Open Settings.cmd`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `settings.sample.json`, a concise `README.txt` and `docs/licenses/`. Repository Markdown guides, source, artwork and private developer evidence are not bundled. GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives are source, **not ready-to-run downloads**.
+
+Rainmeter is optional and separately installed: use an available matching `.rmskin`, manually load `Launcher.ini`, then explicitly click its settings launcher. Installation/loading/refresh does not launch the configurator, apply the engine or register TaskbarX startup. The click only opens settings; Apply and Startup remain separate actions. See the [Rainmeter workflow and official references](docs/DISTRIBUTION.md#optional-rainmeter-workflow).
 
 Closing the GUI leaves the engine running. Use **Stop TaskbarX** to request graceful stop/restoration. Cleanup is not guaranteed after crashes or force termination, nor is exact restoration of every third-party effect. See the [user guide](docs/USER-GUIDE.md).
 
@@ -52,7 +57,7 @@ See [shortcut instructions and icon limitations](docs/USER-GUIDE.md#start-shortc
 
 ## Commandline examples
 
-From PowerShell in the folder containing both downloaded EXEs:
+From PowerShell in the extracted package folder containing both EXEs:
 
 ```powershell
 .\taskbarx.exe --help
@@ -70,12 +75,12 @@ From PowerShell in the folder containing both downloaded EXEs:
 
 **Where are settings stored?** `%APPDATA%\TaskbarX-Rust\settings.json`. Portable binaries do not imply portable settings; `--config PATH` selects another file.
 
-**How do I update or remove it?** Stop first, preserve settings, and explicitly disable/update owned startup before moving executable/config paths. Close the GUI before replacing both EXEs or removing the folder. Remove owned shortcuts separately. Upstream tasks are **not** automatically migrated or removed. See [update/removal details](docs/USER-GUIDE.md#quick-use).
+**How do I update or remove it?** Stop first and confirm completion, back up settings, and explicitly disable/update owned startup before moving executable/config paths, including paths under Rainmeter. Close the GUI before replacing the package or removing its folder. Remove owned shortcuts separately. Upstream tasks are **not** automatically migrated or removed. See [update/removal details](docs/USER-GUIDE.md#quick-use).
 
 ## Credits
 
 Original TaskbarX by **Chris Andriessen**. **Copyright (c) 2021 Chris Andriessen**, preserved under the [MIT license](LICENSE); see [third-party notices](THIRD_PARTY_NOTICES.md).
 
-Upstream ModernWPF, TaskScheduler and Emoji.Wpf references are .NET libraries, not this rewrite's Rust dependencies. Actual dependencies come from Cargo (including `clap`, `serde`, `serde_json` and `windows`); see [guide attribution](docs/USER-GUIDE.md#license-and-attribution).
+Upstream-like package choices do not reproduce upstream .NET internals: this native Rust rewrite does not need upstream ModernWPF, TaskScheduler or Emoji.Wpf DLLs or their resource directories. Never relabel upstream binaries as Rust builds. Actual dependencies come from Cargo (including `clap`, `serde`, `serde_json` and `windows`); this is not a claim that every system dependency is statically linked. See [guide attribution](docs/USER-GUIDE.md#license-and-attribution).
 
-The composite combines Chris Andriessen's upstream TaskbarX banner with an embedded Rust badge; it depicts upstream, not this build. Separate artwork rights require review before public distribution. Rust logo artwork is by Rust project contributors (CC BY 4.0); no Rust project or Foundation endorsement is implied. See [artwork provenance](docs/assets/README.md).
+The composite combines Chris Andriessen's upstream TaskbarX banner with an embedded Rust badge; it depicts upstream, not this build, and is not bundled in distribution packages. Separate artwork rights require review before public distribution. Rust logo artwork is by Rust project contributors (CC BY 4.0); no Rust project or Foundation endorsement is implied. Package formats confer no endorsement. See [artwork provenance](docs/assets/README.md).
