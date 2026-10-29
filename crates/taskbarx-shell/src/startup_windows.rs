@@ -125,7 +125,10 @@ impl Scheduler for SchedulerCom {
             let mut record = Record {
                 xml: string(|out| definition.XmlText(out))?,
                 marker: string(|out| info.Description(out))?,
-                principal_sid: string(|out| principal.UserId(out))?,
+                principal_sid: normalize_account(
+                    &string(|out| principal.UserId(out))?,
+                    account_sid,
+                )?,
                 group: string(|out| principal.GroupId(out))?,
                 interactive: logon == TASK_LOGON_INTERACTIVE_TOKEN,
                 least_privilege: level == TASK_RUNLEVEL_LUA,
@@ -141,7 +144,10 @@ impl Scheduler for SchedulerCom {
             if count == 1 {
                 let trigger = triggers.get_Item(1).map_err(|e| e.to_string())?;
                 if let Ok(logon) = trigger.cast::<ILogonTrigger>() {
-                    record.logon_sid = Some(string(|out| logon.UserId(out))?);
+                    record.logon_sid = Some(normalize_account(
+                        &string(|out| logon.UserId(out))?,
+                        account_sid,
+                    )?);
                     let delay = string(|out| logon.Delay(out))?;
                     record.delay = parse_duration(&delay);
                     if record.delay.is_none() {
@@ -226,6 +232,76 @@ impl Scheduler for SchedulerCom {
     }
 }
 
+// Scheduler may return a bare or DOMAIN\\user account name even when the
+// registered XML used a SID. Resolve names, never compare display names or
+// weaken the marker/principal/logon ownership checks.
+fn normalize_account(
+    value: &str,
+    resolve: impl FnOnce(&str) -> Result<String, String>,
+) -> Result<String, String> {
+    if value.is_empty() || value.starts_with("S-1-") {
+        Ok(value.to_owned())
+    } else {
+        resolve(value)
+    }
+}
+
+fn account_sid(name: &str) -> Result<String, String> {
+    use windows::{
+        core::{PCWSTR, PWSTR},
+        Win32::{
+            Foundation::{LocalFree, ERROR_INSUFFICIENT_BUFFER, HLOCAL},
+            Security::{
+                Authorization::ConvertSidToStringSidW, LookupAccountNameW, PSID, SID_NAME_USE,
+            },
+        },
+    };
+    crate::native::effects_allowed()?;
+    let name = crate::native::wide(name);
+    let mut bytes = 0;
+    let mut domain_len = 0;
+    let mut kind = SID_NAME_USE::default();
+    unsafe {
+        match LookupAccountNameW(
+            PCWSTR::null(),
+            PCWSTR(name.as_ptr()),
+            None,
+            &mut bytes,
+            None,
+            &mut domain_len,
+            &mut kind,
+        ) {
+            Err(e) if e.code() == ERROR_INSUFFICIENT_BUFFER.to_hresult() => {}
+            Err(e) => return Err(format!("resolving scheduled-task account identity: {e}")),
+            Ok(()) => return Err("account lookup returned no SID buffer".into()),
+        }
+        if bytes == 0 || bytes > 65536 || domain_len > 65536 {
+            return Err("invalid scheduled-task account buffer sizes".into());
+        }
+        // Aligned storage for the native SID; lookup lengths remain bytes.
+        let mut sid = vec![0u32; (bytes as usize).div_ceil(4)];
+        let mut domain = vec![0u16; domain_len as usize];
+        LookupAccountNameW(
+            PCWSTR::null(),
+            PCWSTR(name.as_ptr()),
+            Some(PSID(sid.as_mut_ptr().cast())),
+            &mut bytes,
+            Some(PWSTR(domain.as_mut_ptr())),
+            &mut domain_len,
+            &mut kind,
+        )
+        .map_err(|e| format!("resolving scheduled-task account identity: {e}"))?;
+        let mut text = PWSTR::null();
+        ConvertSidToStringSidW(PSID(sid.as_mut_ptr().cast()), &mut text)
+            .map_err(|e| format!("formatting scheduled-task account SID: {e}"))?;
+        let result = text
+            .to_string()
+            .map_err(|e| format!("decoding scheduled-task account SID: {e}"));
+        let _ = LocalFree(Some(HLOCAL(text.0.cast())));
+        result
+    }
+}
+
 fn parse_duration(text: &str) -> Option<u32> {
     if text.is_empty() {
         return Some(0);
@@ -271,6 +347,29 @@ fn parse_duration(text: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scheduler_account_names_resolve_to_sids_without_trusting_names() {
+        let sid = "S-1-5-21-100-200-300-1001";
+        for name in ["patter", "DESKTOP\\patter"] {
+            assert_eq!(normalize_account(name, |_| Ok(sid.into())).unwrap(), sid);
+        }
+        assert_eq!(
+            normalize_account(sid, |_| panic!("SID must not be resolved as a name")).unwrap(),
+            sid
+        );
+        assert_eq!(
+            normalize_account("", |_| panic!(
+                "empty trigger must not resolve to current user"
+            ))
+            .unwrap(),
+            ""
+        );
+        assert_ne!(
+            normalize_account("other", |_| Ok("S-1-5-21-999-1002".into())).unwrap(),
+            sid
+        );
+        assert!(normalize_account("unresolved", |_| Err("lookup failed".into())).is_err());
+    }
     #[test]
     fn scheduler_duration_normalization() {
         for (input, value) in [
