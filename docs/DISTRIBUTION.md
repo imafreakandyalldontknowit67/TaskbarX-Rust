@@ -1,33 +1,33 @@
 # Distribution and package selection
 
-TaskbarX-Rust is an **independent native Rust rewrite** of Chris Andriessen's TaskbarX, not an official upstream release. This document describes the planned unsigned v0.1.2 packages. **Verification is pending; no v0.1.2 build, test or availability claim is made.** Keep Windows security checks enabled.
+TaskbarX-Rust is an **independent native Rust rewrite** of Chris Andriessen's TaskbarX, not an official upstream release. This document describes the unsigned v0.1.2 packages. Keep Windows security checks enabled.
 
 ## Choose a package
 
-**Portable ZIPs are the primary choice.** These are prospective asset links for the [planned v0.1.2 release](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.2), not available downloads.
+**Portable ZIPs are the primary choice.** Download the matching package from the [v0.1.2 release](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.2).
 
 | Architecture | Portable ZIP | Optional Rainmeter launcher |
 | --- | --- | --- |
 | x64 (64-bit Intel/AMD Windows) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.rmskin) |
-| x86 (32-bit; limited historical validation) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.rmskin) |
+| x86 (32-bit; limited validation) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.rmskin) |
 
-**Windows 10 classic taskbar only; Windows 11 is unsupported.** ARM64 is unavailable and unvalidated. No ARM32 or neutral/AnyCPU build is provided. Historical x64 and x86 evidence is summarized below.
+**Windows 10 classic taskbar only; Windows 11 is unsupported.** ARM64 is unavailable and unvalidated. No ARM32 or neutral/AnyCPU build is provided. x64 and x86 evidence is summarized below.
 
 GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives are source, not ready-to-run application packages. They are distinct from uploaded assets and local developer evidence ZIPs.
 
 ## Architecture and verification
 
-Packaging support, compilation, runtime verification and download availability are separate. A filename or PE header alone does not establish any of the latter three. **The results below are historical v0.1.1 evidence, not v0.1.2 verification.**
+Packaging support, compilation, runtime verification and download availability are separate. A filename or PE header alone does not establish any of the latter three. See the [v0.1.2 validation summary](BUILD-v0.1.2.md).
 
-| Architecture / PE Machine | Packaging support | Historical build/runtime evidence |
+| Architecture / PE Machine | Packaging support | build/runtime evidence |
 | --- | --- | --- |
 | x64 / `0x8664` | ZIP and optional `.rmskin` | Native workspace tests, strict Clippy, debug/release builds and read-only detection passed |
 | x86 / `0x014c` | ZIP and optional `.rmskin` | Real x86 build, tests/Clippy and read-only detection passed under WOW64; native 32-bit Windows and live effects untested |
 | ARM64 / `0xAA64` | ZIP format only; no available binary | No completed build or runtime validation |
 
-See [v0.1.1 build evidence](BUILD-v0.1.1.md). Those x64 and x86 binaries statically linked the MSVC CRT; imports were checked to exclude separate VC runtime DLL dependencies. Windows system DLLs are still required.
+See [v0.1.2 build evidence](BUILD-v0.1.2.md). Those x64 and x86 binaries statically linked the MSVC CRT; imports were checked to exclude separate VC runtime DLL dependencies. Windows system DLLs are still required.
 
-Historical runtime checks used **Windows 10 x64 with the classic Explorer taskbar**, with x86 running under WOW64; native 32-bit Windows remains untested. A separate startup repair verified Enable/update and status, including the account-name-to-SID fix, with a six-second delay. **Actual logon launch and most visual effects have not been live-tested.** Live positioning/restoration, visual parity, performance, real shortcuts/pinning and tray interaction are not established by those checks. See [user-guide evidence](USER-GUIDE.md#compatibility-and-evidence) and [testing boundaries](TESTING.md).
+runtime checks used **Windows 10 x64 with the classic Explorer taskbar**, with x86 running under WOW64; native 32-bit Windows remains untested. A separate startup repair verified Enable/update and status, including the account-name-to-SID fix, with a six-second delay. **Actual logon launch and most visual effects have not been live-tested.** Live positioning/restoration, visual parity, performance, real shortcuts/pinning and tray interaction are not established by those checks. See [user-guide evidence](USER-GUIDE.md#compatibility-and-evidence) and [testing boundaries](TESTING.md).
 
 Modern Windows 11 taskbars remain **unsupported**. Shell patching and elevation are not promised workarounds. Appearance APIs remain build/theme dependent. Packaging does not broaden operating-system support, and no live Rainmeter installation test is established here.
 
@@ -124,7 +124,7 @@ The local release workflow creates an **evidence package**, with broad documenta
 
 Retain the source revision, compiler-reported CLI/GUI artifacts and hashes for each architecture. Inspect archive entries against the layouts above and verify that embedded binaries match the supplied pair. PE checks establish declared architecture, not build provenance; x64 evidence does not validate x86 or ARM64.
 
-Keep `LICENSE`, `THIRD_PARTY_NOTICES.md` and applicable `docs/licenses/` texts with the payload. Review notices against the resolved dependencies. Checksums detect byte differences; they are not signatures or license-compliance certification. Packaging preserves executable bytes, including any embedded compiler paths, which require separate build review.
+Keep `LICENSE`, `THIRD_PARTY_NOTICES.md` and applicable `docs/licenses/` texts with the payload. Review notices against the resolved dependencies. Checksums detect byte differences; they are not signatures or license-compliance certification. Packaging preserves executable bytes and requires privacy checks on the input binaries and final archives. Build-time remapping removes workstation paths before packaging.
 
 ## Why the layout differs from upstream
 

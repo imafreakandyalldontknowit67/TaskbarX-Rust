@@ -2,7 +2,7 @@
 
 ## Status
 
-**v0.1.2 verification is pending.** Historical workspace and isolated results are summarized in [VALIDATION](VALIDATION.md); architecture-specific v0.1.1 results are in [BUILD-v0.1.1](BUILD-v0.1.1.md). Validation of a new candidate requires its own `verification.json`/`release.json` and logs. Earlier results do not validate later source.
+Current checks are summarized in [BUILD-v0.1.2](BUILD-v0.1.2.md). Historical workspace and isolated results are summarized in [VALIDATION](VALIDATION.md); architecture-specific v0.1.1 results are in [BUILD-v0.1.1](BUILD-v0.1.1.md). Validation of a new candidate requires its own `verification.json`/`release.json` and logs. Earlier results do not validate later source.
 
 **Live positioning, styling, restoration, Explorer recovery, startup registration, shortcut creation/pinning, Start-menu and tray interaction: NOT EXECUTED by the automated procedure.** Its sole desktop probe is `diagnose --json`. PE checks, successful compilation, mocks and diagnostic JSON do not establish visual feature parity.
 

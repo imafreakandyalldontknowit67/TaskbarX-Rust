@@ -1,12 +1,12 @@
 <p>
-  <img src="docs/assets/taskbarx-rust-banner.png" width="100%" alt="Original AI-generated conceptual TaskbarX-Rust illustration with abstract taskbar motifs; not an application screenshot">
+  <img src="docs/assets/taskbarx-rust-original.png" width="100%" alt="Original AI-generated conceptual TaskbarX-Rust illustration with abstract taskbar motifs; not an application screenshot">
 </p>
 
 # TaskbarX-Rust
 
 An **independent Rust rewrite of Chris Andriessen's [TaskbarX](https://github.com/ChrisAnd1998/TaskbarX)** for taskbar positioning and appearance. Not an official upstream release.
 
-**v0.1.2 is planned and pending verification.** The links below are prospective; they do not indicate that packages have been built, tested or made available.
+**v0.1.2** provides complete unsigned portable packages for Windows 10.
 
 ## Downloads / quick start
 
@@ -17,7 +17,7 @@ Once available, download one complete, unsigned package, not separate EXEs. [Pla
 | x64 (64-bit Intel/AMD Windows) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.rmskin) |
 | x86 (32-bit; limited historical validation) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.rmskin) |
 
-**Windows 10 classic taskbar only; Windows 11 is unsupported.** Historical v0.1.1 checks passed natively on x64 and under WOW64 for x86, including read-only detection. Native 32-bit Windows and live effects were not tested. ARM64 is unavailable and unvalidated; no ARM32 or neutral/AnyCPU build is provided. See [historical v0.1.1 evidence](docs/BUILD-v0.1.1.md) and [package details](docs/DISTRIBUTION.md); these results do not validate v0.1.2.
+**Windows 10 classic taskbar only; Windows 11 is unsupported.** v0.1.2 checks passed natively on x64 and under WOW64 for x86, including read-only detection. Native 32-bit Windows and live effects were not tested. ARM64 is unavailable and unvalidated; no ARM32 or neutral/AnyCPU build is provided. See [build evidence](docs/BUILD-v0.1.2.md) and [package details](docs/DISTRIBUTION.md).
 
 1. When available, download the matching ZIP and **extract all files into a stable folder**, keeping both EXEs together. Keep Windows security checks enabled; packages are unsigned.
 2. Open `Open Settings.cmd` or `taskbarx-configurator.exe`. Opening settings **does not start the engine**.

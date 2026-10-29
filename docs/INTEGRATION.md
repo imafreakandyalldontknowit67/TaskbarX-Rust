@@ -1,6 +1,6 @@
 # Workspace validation and local packaging
 
-This checklist covers the six-package Rust 2021 Cargo workspace and native Windows x64 local evidence workflow on PowerShell 5.1+. **v0.1.2 verification is pending**; historical results are recorded separately in [VALIDATION](VALIDATION.md) and [BUILD-v0.1.1](BUILD-v0.1.1.md).
+This checklist covers the six-package Rust 2021 Cargo workspace and native Windows x64 local evidence workflow on PowerShell 5.1+. Current results are in [BUILD-v0.1.2](BUILD-v0.1.2.md); historical results remain in [VALIDATION](VALIDATION.md).
 
 ## Before collecting evidence
 

@@ -1,8 +1,6 @@
 # Validation status
 
-**v0.1.2 verification is pending.** The results below are historical and do not
-validate the planned release. Architecture-specific v0.1.1 build and archive
-checks are recorded in [BUILD-v0.1.1](BUILD-v0.1.1.md).
+Current checks are summarized in [BUILD-v0.1.2](BUILD-v0.1.2.md). The records below describe earlier validation and are retained for regression context.
 
 ## Historical workspace validation (2026-10-29 UTC)
 
