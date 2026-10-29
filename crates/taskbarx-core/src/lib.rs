@@ -18,4 +18,6 @@ mod animation;
 mod geometry;
 
 pub use animation::{animated_position, easing, EASING_NAMES};
-pub use geometry::{center_target, legal_position_range, AxisLayout};
+pub use geometry::{
+    center_target, center_target_with_overlap, legal_position_range, requested_center, AxisLayout,
+};

@@ -1,4 +1,81 @@
-use taskbarx_core::{center_target, legal_position_range, AxisLayout};
+use taskbarx_core::{
+    center_target, center_target_with_overlap, legal_position_range, requested_center, AxisLayout,
+};
+
+#[test]
+fn overlap_is_detected_before_clamping_and_fallback_is_legal_not_zero() {
+    let layout = AxisLayout {
+        bar_start: -1000,
+        bar_end: 0,
+        free_start: -900,
+        free_end: -100,
+        parent_start: -950,
+        content_offset: 10,
+        content_len: 200,
+    };
+    assert_eq!(legal_position_range(&layout), Some((40, 640)));
+    assert_eq!(requested_center(&layout, 301, false), Some(641));
+    assert_eq!(center_target(&layout, 301, false), Some(640));
+    assert_eq!(
+        center_target_with_overlap(&layout, 301, false, true),
+        Some(40)
+    );
+    assert_eq!(
+        center_target_with_overlap(&layout, 300, false, true),
+        Some(640)
+    );
+    for shift in [-1000, 0, 1000] {
+        let translated = translate(layout, shift);
+        for between in [false, true] {
+            for offset in [i32::MIN, -100, 0, 100, i32::MAX] {
+                assert_eq!(
+                    center_target_with_overlap(&translated, offset, between, false),
+                    center_target(&translated, offset, between)
+                );
+                let position =
+                    center_target_with_overlap(&translated, offset, between, true).unwrap();
+                let (start, end) = occupied(&translated, position);
+                assert!(
+                    start >= i64::from(translated.free_start)
+                        && end <= i64::from(translated.free_end)
+                );
+            }
+        }
+    }
+    assert_eq!(
+        center_target_with_overlap(
+            &AxisLayout {
+                content_len: 1000,
+                ..layout
+            },
+            i32::MAX,
+            false,
+            true
+        ),
+        None
+    );
+}
+
+#[test]
+fn overlap_fallback_preserves_negative_parent_relative_positions_and_wide_arithmetic() {
+    let layout = primary();
+    assert_eq!(
+        center_target_with_overlap(&layout, i32::MAX, false, true),
+        Some(-12)
+    );
+    let extreme = AxisLayout {
+        bar_start: i32::MIN,
+        bar_end: i32::MAX,
+        free_start: i32::MIN,
+        free_end: i32::MAX,
+        parent_start: i32::MAX,
+        content_offset: i32::MAX,
+        content_len: 1,
+    };
+    let target = center_target_with_overlap(&extreme, i32::MAX, false, true).unwrap();
+    let range = legal_position_range(&extreme).unwrap();
+    assert!((range.0..=range.1).contains(&target));
+}
 
 fn primary() -> AxisLayout {
     AxisLayout {

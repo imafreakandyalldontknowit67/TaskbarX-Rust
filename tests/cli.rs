@@ -76,6 +76,26 @@ fn import_is_validated_saved_and_only_explicit_file_is_changed() {
     let path = sandbox.config();
     let s = taskbarx_config::Settings {
         primary_offset: -42,
+        primary_opacity: Some(0),
+        secondary_opacity: Some(100),
+        corner_radius: 15,
+        taskbar_segments: true,
+        default_style_on_maximized: true,
+        battery_animation: Some("none".into()),
+        battery_poll_ms: Some(10000),
+        skip_resolutions: vec![1280, 1920, 2560],
+        pause_on_fullscreen: true,
+        hide_primary_start: true,
+        hide_secondary_start: true,
+        hide_primary_tray: true,
+        hide_secondary_tray: true,
+        revert_on_tray_overlap: true,
+        toolbar_compensation: false,
+        tray_icon: true,
+        startup_delay_secs: 45,
+        measurement: "uia".into(),
+        show_console: true,
+        style: "transparent-gradient".into(),
         ..Default::default()
     };
     let input = taskbarx_config::to_json(&s).unwrap();
@@ -112,6 +132,10 @@ fn import_is_validated_saved_and_only_explicit_file_is_changed() {
         -42
     );
     assert_eq!(std::fs::read(&path).unwrap(), before);
+    assert_eq!(
+        serde_json::from_slice::<taskbarx_config::Settings>(&show.stdout).unwrap(),
+        s
+    );
     assert_eq!(
         std::fs::metadata(&path).unwrap().modified().unwrap(),
         modified

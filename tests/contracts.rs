@@ -24,4 +24,21 @@ fn default_settings_match_runtime_contract() {
     assert_eq!((s.animation_ms, s.poll_ms), (300, 400));
     assert_eq!(s.style, "default");
     assert_eq!(s.color, [0, 0, 0, 128]);
+    assert_eq!(s.primary_opacity, None);
+    assert_eq!(s.secondary_opacity, None);
+    assert_eq!(s.battery_animation, None);
+    assert_eq!(s.battery_poll_ms, None);
+    assert_eq!(s.corner_radius, 0);
+    assert!(s.skip_resolutions.is_empty());
+    assert!(!s.taskbar_segments && !s.default_style_on_maximized && !s.pause_on_fullscreen);
+    assert!(
+        !s.hide_primary_start
+            && !s.hide_secondary_start
+            && !s.hide_primary_tray
+            && !s.hide_secondary_tray
+    );
+    assert!(!s.revert_on_tray_overlap && !s.tray_icon && !s.show_console);
+    assert!(s.toolbar_compensation);
+    assert_eq!(s.startup_delay_secs, 6);
+    assert_eq!(s.measurement, "msaa");
 }

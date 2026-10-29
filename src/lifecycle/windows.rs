@@ -21,8 +21,8 @@ use windows::{
         Security::{GetLengthSid, GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER},
         System::{
             Console::{
-                SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT,
-                CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
+                AllocConsole, FreeConsole, SetConsoleCtrlHandler, CTRL_BREAK_EVENT,
+                CTRL_CLOSE_EVENT, CTRL_C_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
             },
             LibraryLoader::GetModuleHandleW,
             RemoteDesktop::ProcessIdToSessionId,
@@ -44,6 +44,28 @@ use windows::{
 
 static STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
 static CLEANUP_DONE: AtomicBool = AtomicBool::new(true);
+
+pub(super) fn configure_console(background: bool, show: bool) -> Result<(), String> {
+    if !background && !show {
+        return Ok(());
+    }
+    unsafe {
+        // Only detach THIS process. Never ShowWindow/GetConsoleWindow on an
+        // inherited parent console. FreeConsole also succeeds when unattached.
+        FreeConsole().map_err(|e| error("detaching engine console", e))?;
+        if show {
+            // AllocConsole works for CREATE_NO_WINDOW launches as well; it
+            // creates an engine-owned console instead of attaching the parent.
+            AllocConsole().map_err(|e| error("creating engine console", e))?;
+        }
+        // AllocConsole/FreeConsole reset the handler table. Reinstall the
+        // existing signal-only handler after the console transition.
+        // https://learn.microsoft.com/windows/console/setconsolectrlhandler
+        SetConsoleCtrlHandler(Some(console_handler), true)
+            .map_err(|e| error("registering engine console handler", e))?;
+    }
+    Ok(())
+}
 
 fn error(context: &str, e: impl std::fmt::Display) -> String {
     format!("{context}: {e}")
@@ -249,6 +271,9 @@ pub(super) struct Instance {
 }
 impl Control for Instance {
     fn complete(&mut self, success: bool) -> Result<(), String> {
+        // Even notification teardown must succeed before publishing the named
+        // restoration result. Drop is only a fallback, never confirmation.
+        self._notifications.close()?;
         if success {
             unsafe { SetEvent(self.completion.0) }
                 .map_err(|e| error("publishing restoration result", e))?;
@@ -346,14 +371,29 @@ impl HiddenWindow {
         }
     }
 }
+impl HiddenWindow {
+    fn close(&mut self) -> Result<(), String> {
+        unsafe {
+            if !self.window.is_invalid() {
+                DestroyWindow(self.window).map_err(|e| error("destroying shutdown window", e))?;
+                self.window = HWND::default();
+            }
+            if !self.module.is_invalid() {
+                UnregisterClassW(
+                    w!("TaskbarX.Rust.SessionNotifications.v1"),
+                    Some(self.module),
+                )
+                .map_err(|e| error("unregistering shutdown window", e))?;
+                self.module = HINSTANCE::default();
+            }
+        }
+        Ok(())
+    }
+}
 impl Drop for HiddenWindow {
     fn drop(&mut self) {
-        unsafe {
-            let _ = DestroyWindow(self.window);
-            let _ = UnregisterClassW(
-                w!("TaskbarX.Rust.SessionNotifications.v1"),
-                Some(self.module),
-            );
+        if let Err(e) = self.close() {
+            warn(&e);
         }
     }
 }
@@ -378,7 +418,8 @@ fn pump_messages(owner: bool) {
 }
 
 struct Notifications {
-    thread: Option<std::thread::JoinHandle<()>>,
+    thread: Option<std::thread::JoinHandle<Result<(), String>>>,
+    handler_registered: bool,
 }
 impl Notifications {
     fn new() -> Result<Self, String> {
@@ -386,7 +427,10 @@ impl Notifications {
         CLEANUP_DONE.store(false, Ordering::Release);
         unsafe { SetConsoleCtrlHandler(Some(console_handler), true) }
             .map_err(|e| error("registering console shutdown handler", e))?;
-        let mut guard = Self { thread: None };
+        let mut guard = Self {
+            thread: None,
+            handler_registered: true,
+        };
         let (ready, receive) = std::sync::mpsc::sync_channel(1);
         // One fixed notification helper, never an animation thread. It does NOT
         // own Session, COM, or any taskbar handle. WM_ENDSESSION may terminate a
@@ -397,22 +441,23 @@ impl Notifications {
             std::thread::Builder::new()
                 .name("taskbarx-shutdown".into())
                 .spawn(move || {
-                    let window = match HiddenWindow::new() {
+                    let mut window = match HiddenWindow::new() {
                         Ok(window) => window,
                         Err(error) => {
                             let _ = ready.send(Err(error));
-                            return;
+                            return Ok(());
                         }
                     };
                     if ready.send(Ok(())).is_err() {
-                        return;
+                        return window.close();
                     }
+                    let mut failure = None;
                     while !CLEANUP_DONE.load(Ordering::Acquire) {
                         let result = unsafe {
                             MsgWaitForMultipleObjectsEx(None, 50, QS_ALLINPUT, MWMO_INPUTAVAILABLE)
                         };
                         if result == WAIT_FAILED {
-                            warn(&error(
+                            failure = Some(error(
                                 "waiting for session notifications",
                                 unsafe { GetLastError() }.to_hresult(),
                             ));
@@ -421,7 +466,8 @@ impl Notifications {
                         }
                         pump_messages(false);
                     }
-                    drop(window);
+                    let cleanup = window.close().err().into_iter().collect();
+                    crate::runtime::combine_cleanup(failure.map_or(Ok(()), Err), cleanup)
                 })
                 .map_err(|e| error("starting shutdown notification thread", e))?,
         );
@@ -431,17 +477,35 @@ impl Notifications {
         Ok(guard)
     }
 }
-impl Drop for Notifications {
-    fn drop(&mut self) {
-        // Instance outlives the restoration guard AND Session's Drop.
+impl Notifications {
+    fn close(&mut self) -> Result<(), String> {
+        // Backend and tray are already gone on normal completion. On panic this
+        // unblocks OS callbacks but does NOT publish the named success event.
         CLEANUP_DONE.store(true, Ordering::Release);
-        unsafe {
-            let _ = SetConsoleCtrlHandler(Some(console_handler), false);
+        let mut errors = Vec::new();
+        if self.handler_registered {
+            match unsafe { SetConsoleCtrlHandler(Some(console_handler), false) } {
+                Ok(()) => self.handler_registered = false,
+                Err(e) => errors.push(error("removing console handler", e)),
+            }
         }
         if let Some(thread) = self.thread.take() {
-            if thread.join().is_err() {
-                warn("shutdown notification thread panicked");
+            match thread.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => errors.push(e),
+                Err(_) => errors.push("shutdown notification thread panicked".into()),
             }
+        }
+        runtime_cleanup(errors)
+    }
+}
+fn runtime_cleanup(errors: Vec<String>) -> Result<(), String> {
+    crate::runtime::combine_cleanup(Ok(()), errors)
+}
+impl Drop for Notifications {
+    fn drop(&mut self) {
+        if let Err(e) = self.close() {
+            warn(&e);
         }
     }
 }

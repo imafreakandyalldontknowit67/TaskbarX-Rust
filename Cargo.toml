@@ -6,6 +6,7 @@ members = [
     "crates/taskbarx-win32",
     "crates/taskbarx-config",
     "crates/taskbarx-configurator",
+    "crates/taskbarx-shell",
 ]
 
 [workspace.package]
@@ -34,6 +35,7 @@ path = "src/main.rs"
 taskbarx-core = { path = "crates/taskbarx-core" }
 taskbarx-win32 = { path = "crates/taskbarx-win32" }
 taskbarx-config = { path = "crates/taskbarx-config" }
+taskbarx-shell = { path = "crates/taskbarx-shell" }
 clap.workspace = true
 serde_json.workspace = true
 

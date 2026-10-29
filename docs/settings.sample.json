@@ -10,5 +10,29 @@
   "animation_ms": 300,
   "poll_ms": 400,
   "style": "default",
-  "color": [0, 0, 0, 128]
+  "color": [
+    0,
+    0,
+    0,
+    128
+  ],
+  "primary_opacity": null,
+  "secondary_opacity": null,
+  "corner_radius": 0,
+  "taskbar_segments": false,
+  "default_style_on_maximized": false,
+  "battery_animation": null,
+  "battery_poll_ms": null,
+  "skip_resolutions": [],
+  "pause_on_fullscreen": false,
+  "hide_primary_start": false,
+  "hide_secondary_start": false,
+  "hide_primary_tray": false,
+  "hide_secondary_tray": false,
+  "revert_on_tray_overlap": false,
+  "toolbar_compensation": true,
+  "tray_icon": false,
+  "startup_delay_secs": 6,
+  "measurement": "msaa",
+  "show_console": false
 }

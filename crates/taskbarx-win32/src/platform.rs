@@ -1,12 +1,19 @@
 // TaskbarX topology/accent adaptations: Copyright (c) 2021 Chris Andriessen.
 // Original MIT terms are in upstream-license.txt.
+#[path = "platform_effects.rs"]
+mod feature_primitives;
 use crate::{
     accessibility,
+    effects::{
+        ChildIdentity, ControlGeometry, ControlKind, LayeredAttributes, Layout, OpacityOriginal,
+        RegionPart, LAYERED,
+    },
     geometry::available,
     state::{Accent, Api},
-    Discovery, Point, Rect, TaskbarId, TaskbarSnapshot,
+    Discovery, EnvironmentSnapshot, MeasurementBackend, Point, Rect, TaskbarId, TaskbarSnapshot,
 };
 use std::{
+    collections::HashMap,
     ffi::c_void,
     marker::PhantomData,
     mem::{size_of, transmute},
@@ -41,7 +48,7 @@ use windows::{
 fn hwnd(value: isize) -> HWND {
     HWND(value as *mut c_void)
 }
-fn error(context: &str, e: impl std::fmt::Display) -> String {
+pub(crate) fn error(context: &str, e: impl std::fmt::Display) -> String {
     format!("{context}: {e}")
 }
 fn last_error(context: &str) -> String {
@@ -236,6 +243,9 @@ pub(crate) struct Windows {
     dpi: Dpi,
     build: u32,
     composition: Composition,
+    measurement: MeasurementBackend,
+    uia: Option<accessibility::Automation>,
+    root_classes: HashMap<crate::effects::Root, String>,
     // Kept alive until Controller::drop has restored everything.
     _com: ComApartment,
 }
@@ -247,12 +257,15 @@ impl Windows {
             dpi,
             build,
             composition: Composition::new(),
+            measurement: MeasurementBackend::Msaa,
+            uia: None,
+            root_classes: HashMap::new(),
             _com: ComApartment::new()?,
         })
     }
 }
 
-fn class(window: HWND) -> Result<String, String> {
+pub(crate) fn class(window: HWND) -> Result<String, String> {
     let mut name = [0u16; 256];
     let n = unsafe { GetClassNameW(window, &mut name) };
     if n <= 0 {
@@ -317,7 +330,7 @@ unsafe extern "system" fn collect(window: HWND, data: LPARAM) -> BOOL {
     out.windows.push(window);
     BOOL(1)
 }
-fn enumerate(root: Option<HWND>) -> Result<Vec<HWND>, String> {
+pub(crate) fn enumerate(root: Option<HWND>) -> Result<Vec<HWND>, String> {
     let mut out = Enumeration {
         windows: Vec::new(),
         exceeded: false,
@@ -426,7 +439,7 @@ fn window_rect(window: HWND) -> Result<Rect, String> {
     .normalized();
     Ok(r)
 }
-fn rect(window: HWND) -> Result<Rect, String> {
+pub(crate) fn rect(window: HWND) -> Result<Rect, String> {
     let r = window_rect(window)?;
     if !r.valid() {
         return Err("Window has an empty rectangle".into());
@@ -483,6 +496,7 @@ fn measure(
     id: &TaskbarId,
     dpi: Dpi,
     build: u32,
+    uia: Option<&accessibility::Automation>,
     warnings: &mut Vec<String>,
 ) -> Result<TaskbarSnapshot, String> {
     validate(id, build)?;
@@ -513,13 +527,15 @@ fn measure(
         .intersect(taskbar_rect)
         .ok_or("Taskbar clipping area is empty")?;
     let content_rect = match clip.intersect(list_rect) {
-        Some(c) => match accessibility::content(list, c) {
-            Ok(r) => Some(r),
-            Err(e) => {
-                warnings.push(format!("Taskbar {:#x}: {e}", id.root));
-                None
+        Some(c) => {
+            match uia.map_or_else(|| accessibility::content(list, c), |a| a.content(list, c)) {
+                Ok(r) => Some(r),
+                Err(e) => {
+                    warnings.push(format!("Taskbar {:#x}: {e}", id.root));
+                    None
+                }
             }
-        },
+        }
         None => {
             warnings.push(format!(
                 "Taskbar {:#x}: task-list is outside parent clip",
@@ -536,13 +552,20 @@ fn measure(
     let reservations = (|| -> Result<Vec<Rect>, String> {
         let mut regions = Vec::new();
         for w in enumerate(Some(root))? {
-            if w == list
-                || chain.contains(&w)
-                || unsafe { IsChild(list, w) }.as_bool()
-                || !unsafe { IsWindowVisible(w) }.as_bool()
+            if w == list || chain.contains(&w) || unsafe { IsChild(list, w) }.as_bool() {
+                continue;
+            }
+            if !unsafe { IsWindowVisible(w) }.as_bool()
+                && !matches!(
+                    class(w)?.as_str(),
+                    "Start" | "TrayNotifyWnd" | "ClockButton" | "ClockButtonWindow"
+                )
             {
                 continue;
             }
+            // Hiding a control does not prove its layout slot was reclaimed.
+            // Retain its freshly measured nonempty slot until Explorer actually
+            // moves/resizes it out of the parent clip. Never fabricate expansion.
             // A successfully measured zero-area control reserves no space. An
             // API failure is different: abort the reservation measurement.
             if let Some(r) = window_rect(w)?.intersect(clip) {
@@ -603,15 +626,96 @@ fn measure(
 }
 
 impl Api for Windows {
+    fn layout_stamp(&mut self, id: &TaskbarId) -> Result<(u32, bool), String> {
+        let _dpi = self.dpi.enter()?;
+        self.validate_root(id)?;
+        Ok((
+            self.dpi.measure(hwnd(id.root))?,
+            vertical(rect(hwnd(id.root))?),
+        ))
+    }
+    fn environment(&mut self) -> Result<EnvironmentSnapshot, String> {
+        let _dpi = self.dpi.enter()?;
+        crate::environment::inspect()
+    }
+    fn set_measurement_backend(&mut self, backend: MeasurementBackend) -> Result<(), String> {
+        match backend {
+            MeasurementBackend::Msaa => self.uia = None,
+            MeasurementBackend::UiAutomation => {
+                if self.uia.is_none() {
+                    self.uia = Some(accessibility::Automation::new()?);
+                }
+            }
+        }
+        self.measurement = backend;
+        Ok(())
+    }
+    fn layout(&mut self, id: &TaskbarId) -> Result<Layout, String> {
+        self.native_layout(id)
+    }
+    fn capture_opacity(&mut self, id: &TaskbarId) -> Result<OpacityOriginal, String> {
+        self.native_capture_opacity(id)
+    }
+    fn set_layered_bit(&mut self, id: &TaskbarId, enabled: bool) -> Result<(), String> {
+        self.native_layered_bit(id, enabled)
+    }
+    fn set_layered(&mut self, id: &TaskbarId, a: LayeredAttributes) -> Result<(), String> {
+        self.native_layered(id, a)
+    }
+    fn child_obsolete(&mut self, id: &TaskbarId, c: &ChildIdentity) -> bool {
+        self.native_child_obsolete(id, c)
+    }
+    fn child_visible(&mut self, id: &TaskbarId, c: &ChildIdentity) -> Result<bool, String> {
+        self.native_visible(id, c)
+    }
+    fn set_child_visible(
+        &mut self,
+        id: &TaskbarId,
+        c: &ChildIdentity,
+        v: bool,
+    ) -> Result<(), String> {
+        self.native_set_visible(id, c, v)
+    }
+    fn child_position(&mut self, id: &TaskbarId, c: &ChildIdentity) -> Result<Point, String> {
+        self.native_child_position(id, c)
+    }
+    fn move_child(
+        &mut self,
+        id: &TaskbarId,
+        c: &ChildIdentity,
+        p: Point,
+        expected: Point,
+    ) -> Result<(), String> {
+        self.native_move_child(id, c, p, expected)
+    }
+    fn capture_region(&mut self, id: &TaskbarId) -> Result<Option<Vec<u8>>, String> {
+        self.native_capture_region(id)
+    }
+    fn apply_region(
+        &mut self,
+        id: &TaskbarId,
+        p: &[RegionPart],
+        client: Rect,
+    ) -> Result<(), String> {
+        self.native_region(id, p, client)
+    }
+    fn restore_region(&mut self, id: &TaskbarId, data: Option<&[u8]>) -> Result<(), String> {
+        self.native_restore_region(id, data)
+    }
     fn validate_root(&mut self, id: &TaskbarId) -> Result<(), String> {
         let root = hwnd(id.root);
+        let current_class = class(root)?;
         if !unsafe { IsWindow(Some(root)) }.as_bool()
             || !matches!(
-                class(root)?.as_str(),
+                current_class.as_str(),
                 "Shell_TrayWnd" | "Shell_SecondaryTrayWnd"
             )
             || pid(root)? != id.process_id
             || process_started(id.process_id)? != id.process_started
+            || self
+                .root_classes
+                .get(&crate::effects::Root::from(id))
+                .is_some_and(|original| *original != current_class)
         {
             return Err("Taskbar root identity changed".into());
         }
@@ -619,11 +723,21 @@ impl Api for Windows {
     }
     fn root_obsolete(&mut self, id: &TaskbarId) -> bool {
         !unsafe { IsWindow(Some(hwnd(id.root))) }.as_bool()
+            || class(hwnd(id.root))
+                .is_ok_and(|c| c != "Shell_TrayWnd" && c != "Shell_SecondaryTrayWnd")
             || pid(hwnd(id.root)).is_ok_and(|p| p != id.process_id)
             || process_started(id.process_id).is_ok_and(|t| t != id.process_started)
+            || class(hwnd(id.root)).is_ok_and(|current| {
+                self.root_classes
+                    .get(&crate::effects::Root::from(id))
+                    .is_some_and(|original| *original != current)
+            })
     }
 
     fn obsolete(&mut self, id: &TaskbarId) -> bool {
+        if self.root_obsolete(id) {
+            return true;
+        }
         if [id.root, id.task_list, id.parent]
             .iter()
             .any(|h| !unsafe { IsWindow(Some(hwnd(*h))) }.as_bool())
@@ -671,7 +785,17 @@ impl Api for Windows {
                     );
                 }
                 let id = identity(w, self.build)?;
-                measure(&id, self.dpi, self.build, &mut d.warnings)
+                self.root_classes
+                    .entry(crate::effects::Root::from(&id))
+                    .or_insert(class(w)?);
+                self.validate_root(&id)?;
+                measure(
+                    &id,
+                    self.dpi,
+                    self.build,
+                    self.uia.as_ref(),
+                    &mut d.warnings,
+                )
             })();
             match result {
                 Ok(s) => d.taskbars.push(s),
@@ -688,12 +812,13 @@ impl Api for Windows {
         Ok(d)
     }
     fn validate(&mut self, id: &TaskbarId) -> Result<(), String> {
+        self.validate_root(id)?;
         validate(id, self.build)
     }
     fn snapshot(&mut self, id: &TaskbarId) -> Result<TaskbarSnapshot, String> {
         let _dpi = self.dpi.enter()?;
         let mut warnings = Vec::new();
-        let s = measure(id, self.dpi, self.build, &mut warnings)?;
+        let s = measure(id, self.dpi, self.build, self.uia.as_ref(), &mut warnings)?;
         if s.content_rect.is_none() {
             return Err(warnings.join("; "));
         }
@@ -701,7 +826,7 @@ impl Api for Windows {
     }
     fn position(&mut self, id: &TaskbarId) -> Result<(Point, bool), String> {
         let _dpi = self.dpi.enter()?;
-        validate(id, self.build)?;
+        self.validate(id)?;
         Ok((
             position(id, rect(hwnd(id.task_list))?)?,
             vertical(rect(hwnd(id.root))?),
@@ -709,7 +834,7 @@ impl Api for Windows {
     }
     fn move_to(&mut self, id: &TaskbarId, p: Point, expected: (Point, bool)) -> Result<(), String> {
         let _dpi = self.dpi.enter()?;
-        validate(id, self.build)?;
+        self.validate(id)?;
         let current = position(id, rect(hwnd(id.task_list))?)?;
         let vertical = vertical(rect(hwnd(id.root))?);
         if (current, vertical) != expected {
@@ -720,7 +845,7 @@ impl Api for Windows {
         // Re-read the cross-axis immediately before SetWindowPos, including on
         // restoration. No style words, visibility, size or unrelated HWNDs change.
         let p = crate::geometry::axis_position(current, p, vertical);
-        validate(id, self.build)?;
+        self.validate(id)?;
         unsafe {
             SetWindowPos(
                 hwnd(id.task_list),
@@ -735,7 +860,7 @@ impl Api for Windows {
         .map_err(|e| error("SetWindowPos", e))
     }
     fn query_accent(&mut self, id: &TaskbarId) -> Result<Option<Accent>, String> {
-        validate(id, self.build)?;
+        self.validate(id)?;
         let Some(get) = self.composition.get else {
             return Ok(None);
         };
@@ -752,9 +877,7 @@ impl Api for Windows {
         }
     }
     fn apply_accent(&mut self, id: &TaskbarId, mut a: Accent) -> Result<(), String> {
-        if a.state == 4 && self.build < 17134 {
-            return Err("Acrylic accent requires Windows 10 build 17134 or newer".into());
-        }
+        self.check_accent(a)?;
         let set = self
             .composition
             .set
@@ -763,8 +886,17 @@ impl Api for Windows {
         if Composition::call(set, hwnd(id.root), &mut a) {
             Ok(())
         } else {
-            Err("SetWindowCompositionAttribute rejected the accent policy".into())
+            Err(format!("SetWindowCompositionAttribute rejected accent state {} on Windows build {}; this undocumented composition policy is unsupported, not emulated with another style", a.state, self.build))
         }
+    }
+    fn check_accent(&mut self, a: Accent) -> Result<(), String> {
+        if self.composition.set.is_none() {
+            return Err("Undocumented SetWindowCompositionAttribute is unavailable; composition left untouched".into());
+        }
+        if a.state == 4 && self.build < 17134 {
+            return Err("Acrylic accent requires Windows 10 build 17134 or newer".into());
+        }
+        Ok(())
     }
     fn restore_accent(
         &mut self,

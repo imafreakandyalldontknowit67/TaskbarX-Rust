@@ -2,6 +2,7 @@ mod cli;
 mod diagnostics;
 mod lifecycle;
 mod runtime;
+mod services;
 
 use clap::Parser;
 use std::process::ExitCode;

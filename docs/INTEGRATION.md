@@ -1,86 +1,62 @@
-# Post-merge integration and local release checklist
+# Integration and local release checklist
 
-## Mandatory handoff to the orchestrator
+This checklist applies to the **actual combined workspace**, not an obsolete branch count or a documentation-only build. It does not require new repositories, worktrees, commits, any orchestration CLI, publication or pushing.
 
-**AFTER merging all six branches** (root application, core, Win32, config, configurator, and documentation/release validation), the integration orchestrator must run the actual scripts against the actual combined workspace. This document does not require creating repositories/worktrees, invoking any particular orchestration CLI, publishing or pushing.
+## Before collecting evidence
 
-The documentation branch owns only `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README.md`, `docs/` and `scripts/`. It deliberately does not create placeholder Cargo manifests/lockfiles or manufacture executables to make isolated verification appear successful. Resolve integration errors through the owning files/agents:
+- [ ] All six workspace packages exist: root `taskbarx-rust`, core, win32, config, configurator and **shell**. CLI and GUI binary targets are `taskbarx` and `taskbarx-configurator`.
+- [ ] Native Windows x64, `x86_64-pc-windows-msvc` Rust/Cargo, rustfmt, **Clippy**, MSVC C++ tools and Windows SDK are available.
+- [ ] Root `Cargo.lock` is the real reviewed integrated dependency graph. Verification/release does **not** generate or repair it. Dependency-resolving commands use `--locked`.
+- [ ] Review tests/subprocesses for no desktop mutation. Use fake startup/shortcut/tray adapters, synthetic taskbars and temporary config files. No engine run/stop/configure, GUI launch/Apply, Start-menu invocation, startup changes, live shortcuts, tray actions, process killing or Explorer restart.
+- [ ] Audit no-argument/help and `diagnose --json` paths before the first probe. Scripts do not sandbox unsafe code.
+- [ ] Reconcile [PARITY](PARITY.md), README, sample JSON, shared validator, CLI, GUI and runtime. A persisted but unused field is not completed parity. Resolve pending labels against actual source/tests.
+- [ ] Confirm Save/Apply/run/preference changes cannot register startup. Enable/Disable owns only this rewrite's task; shortcut remove/replacement rejects unrelated files. Upstream tasks remain untouched.
+- [ ] Freeze source edits during final validation. Do not collect release evidence while other workers/builds change the candidate.
 
-| Failure | Responsible ownership |
-| --- | --- |
-| Workspace membership, root package/binary, CLI/lifecycle/IPC | Root application owner |
-| Geometry/easing API or tests | `crates/taskbarx-core` owner |
-| Discovery, MSAA, movement/styles/restoration or tests | `crates/taskbarx-win32` owner |
-| Schema, validation, persistence/sample compatibility | `crates/taskbarx-config` owner; coordinate sample documentation changes |
-| GUI binary, engine invocation, form behavior | `crates/taskbarx-configurator` owner |
-| Script bugs, inaccurate documentation/notices | Documentation/release owner |
+## Required gates
 
-Do not hide failures by dropping workspace members, skipping tests, weakening safety requirements, substituting upstream executables, or calling a partial build complete.
-
-## Before running
-
-- [ ] All six branches have been merged, not merely reported done.
-- [ ] Root package is `taskbarx-rust`, producing `taskbarx.exe`; all four fixed `crates/taskbarx-*` members exist, with `taskbarx-configurator.exe` as the GUI target.
-- [ ] Native Windows x64, `x86_64-pc-windows-msvc` Rust/Cargo/rustfmt, MSVC C++ tools and Windows SDK are available. Install Clippy only if choosing that optional gate. No npm or upstream .NET build is required.
-- [ ] Review all automatic tests/build scripts for **no real taskbar mutation**. No engine run/stop/configure, GUI Apply, startup scheduling/registry writes or Explorer restarts. Tests of these paths use mocks/fakes.
-- [ ] Review no-argument/help and `diagnose --json` implementations before the first real probe: they must be read-only. Do not assume the script can sandbox an unsafe executable.
-- [ ] Check CLI/config/GUI agree with the fixed contract and schema in README and `docs/settings.sample.json`; do not silently change the contract to accommodate an integration bug.
-- [ ] Avoid concurrent source edits/builds and cross-target Cargo overrides during evidence collection.
-
-## Required executions
-
-From the **integrated checkout**, not this isolated worktree:
+From the integrated checkout:
 
 ```powershell
 powershell.exe -NoProfile -File .\scripts\test-helpers.ps1
 if ($LASTEXITCODE -ne 0) { throw 'Script helper tests failed' }
 powershell.exe -NoProfile -File .\scripts\verify.ps1
-if ($LASTEXITCODE -ne 0) { throw 'Combined verification failed' }
+if ($LASTEXITCODE -ne 0) { throw 'Verification failed' }
 powershell.exe -NoProfile -File .\scripts\release.ps1
-if ($LASTEXITCODE -ne 0) { throw 'Combined release failed' }
+if ($LASTEXITCODE -ne 0) { throw 'Release failed' }
 ```
 
-`release.ps1` deliberately calls verification again, then runs **`cargo build --release --workspace --locked --message-format=json`**. The duplicate gate ensures a standalone release invocation does not trust old evidence. Optional `-Clippy` on either entry point adds the lint gate.
+Verification requires `cargo fmt --all -- --check`, `cargo test --workspace --locked`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, the debug artifact build, and `cargo build --release --workspace --locked --message-format=json`. Clippy is **not optional**. The retained `-Clippy` switch is compatibility-only, not an opt-in gate.
 
-When initially absent, verification runs `cargo generate-lockfile` in the complete root workspace. Every subsequent dependency-resolving verification/release command uses `--locked`. The root owner must review and commit Cargo's real generated `Cargo.lock`; do not hand-write it. Rerun release after final source/lockfile commits so the candidate's Git metadata identifies the intended revision. Formatting checks do not generate lockfiles or modify source.
+Release repeats verification, rather than trusting older results, and packages verified compiler-reported release artifacts. Check actual logged argument arrays and hashes. Without an override, Cargo uses a unique `dist/cargo-target/<id>`. Explicit `CARGO_TARGET_DIR` may be outside the checkout, but must be an absolute new or empty directory outside the checkout's `target/` and `app/` trees. Relative/drive-relative/root-relative paths, files, occupied directories and reparse-point paths/ancestors are rejected. A create-new ownership marker prevents concurrent claims of the same empty directory. Original environment settings are restored.
 
-If any command fails, preserve its logs, report the error to the owning component, integrate the correction and rerun the full gate. An isolated-worktree missing-manifest error is an expected refusal, **not validation success**.
+On failure, retain logs, correct the owning source and rerun the full gate. Missing packages/lockfile or unsafe paths are failures, not skipped successes. Do not drop workspace members, weaken lint/tests, substitute upstream executables or manufacture placeholders.
 
-## Output and acceptance
+## Output
 
-Output uses unique UTC/GUID directories and never removes an old package:
+Unique generated outputs are retained under `dist/`:
 
-```text
-dist/
-  verification/<id>/                 # actual command logs and diagnose.json
-  release-evidence/<id>/             # release.json, build logs, metadata, lockfile
-  TaskbarX-Rust/<id>/                # portable payload; extract ZIP into its own folder
-    taskbarx.exe
-    taskbarx-configurator.exe
-    LICENSE
-    THIRD_PARTY_NOTICES.md
-    README.md
-    settings.sample.json
-    docs/                           # includes supplemental notices if added
-    build-metadata.json
-    evidence/verification/
-    evidence/build/                  # pre-archive snapshot, packaging still pending
-    SHA256SUMS.txt
-  TaskbarX-Rust-<id>.zip
-  TaskbarX-Rust-<id>.zip.sha256
-```
+- `verification/<id>/`: command logs, `verification.json`, read-only `diagnose.json`.
+- `release-evidence/<id>/`: final `release.json`, metadata, lockfile and dependency evidence.
+- `TaskbarX-Rust/<id>/`: both Rust EXEs, README/LICENSE/notices, `settings.sample.json`, `docs/`, build metadata/evidence and `SHA256SUMS.txt`.
+- `TaskbarX-Rust-<id>.zip` and its adjacent `.zip.sha256`.
+- Isolated Cargo targets under `dist/cargo-target/<id>` by default, or the explicitly validated target directory.
 
-The exact artifact paths are printed and returned by the scripts. `release-evidence/<id>/release.json` is the authoritative final packaging status; the ZIP contains a pre-archive build snapshot, avoiding self-referential checksums. `SHA256SUMS.txt` hashes all payload files except itself. The adjacent `.zip.sha256` hashes the whole ZIP. All `dist/` material is generated output, **not source to stage/commit** (even if Git shows it as untracked).
+Script-only helper fixtures/logs are separate: unique `%TEMP%/TaskbarX-Rust-script-tests-<UTC>-<GUID>` directories, not `dist/script-tests` or application release evidence. Historical outputs are left untouched.
 
-Before claiming completion, the orchestrator must:
+Use paths returned by the scripts, not guessed `target/release` or a pre-existing `app/` deployment. The authoritative final packaging result is the external `release.json`; the packaged evidence is a pre-archive snapshot to avoid self-reference. Generated `dist/`/build outputs are not source to commit. Old packages must not be recursively removed or overwritten.
 
-- [ ] Confirm actual verification and release statuses are `passed`, not helper-only or fake results. Review Cargo test output for coverage and any ignored tests; confirm formatting and workspace build gates ran.
-- [ ] Confirm `diagnose.json` parses and review its shell/MSAA findings. Only read-only diagnostics were run; unsupported layouts or skipped measurements are not evidence of successful positioning.
-- [ ] Confirm **both real release executables exist**, were reported by Cargo for the correct packages, and are x64 PE files. No upstream executables or placeholders may be used. Scripts check these conditions without launching release binaries.
-- [ ] Confirm both portable executables and required documents/sample appear inside the ZIP as well as the staging folder. Independently recompute `Get-FileHash -Algorithm SHA256 -LiteralPath <file>` for the two EXEs and ZIP and compare to the recorded checksums. Check every payload entry when transporting the archive.
-- [ ] Confirm compiler/Cargo versions, Git revision/status, root lockfile hash, command logs, dependency inventory and read-only/manual-test scope are retained. Build evidence may contain local filesystem paths; review before sharing it.
-- [ ] Review dependency licenses and required notice texts using the resolved graph. Update `THIRD_PARTY_NOTICES.md` and `docs/licenses/` as necessary; metadata license expressions alone do not fulfill all notice obligations. Rebuild/package after changing notices.
-- [ ] Report live positioning/styling/restoration/recovery and the entire manual matrix as **NOT EXECUTED** unless separately authorized tests really occurred and have their own evidence. A local package is not a claim of complete live feature parity.
-- [ ] State that this is an independent local validation candidate. Do not publish, upload, sign with upstream credentials, push, enable startup or restart Explorer.
+## Acceptance
 
-The procedure is reproducible as a sequence with locked dependency resolution, not a promise of identical binary or ZIP hashes across machines. Preserve toolchain and SDK/linker information when investigating differences; timestamps and local build environments can affect bytes.
+- [ ] Actual verification and release JSON say `passed`; all mandatory command logs/exit codes exist. Helper-only PASS is insufficient.
+- [ ] Read diagnostic findings, including unsupported layouts/skips; successful JSON does not prove centering works.
+- [ ] Both EXEs were emitted by Cargo for the intended package/bin/profile and are x64 PE files; release executables were not launched.
+- [ ] Both EXEs and required documents/sample occur in staging **and inside the ZIP**.
+- [ ] Independently hash both EXEs and ZIP with `Get-FileHash -Algorithm SHA256 -LiteralPath <file>`; compare recorded checksums. Validate every payload checksum when transporting.
+- [ ] Preserve compiler/Cargo/OS versions, source Git revision/status, root lockfile hash, dependency inventory and exact command logs. Evidence can contain local filesystem paths; review before sharing.
+- [ ] Review dependency licenses and add required texts/notices under `docs/licenses/` before external distribution. Declared license expressions are inventory, not compliance certification. Repackage after notice changes.
+- [ ] Reconcile final source/API/test links in PARITY. Explicitly retain any remaining integration/UI gaps.
+- [ ] Report live positioning, styling, restoration, Explorer recovery, startup, shortcuts and tray actions as **NOT EXECUTED** unless separately authorized tests have their own evidence.
+- [ ] Do not publish, sign, upload, push, enable startup, change `app/` or restart Explorer as part of local packaging.
+
+This procedure is repeatable with locked resolution, not bit-for-bit reproducibility: timestamps, toolchain, linker/SDK and environment can affect output.

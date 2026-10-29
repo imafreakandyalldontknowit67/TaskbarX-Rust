@@ -9,19 +9,19 @@ function Get-RepositoryRoot {
 
 function Assert-IntegratedWorkspace {
     param([Parameter(Mandatory)][string]$Root)
-    $required = @('Cargo.toml', 'crates/taskbarx-core/Cargo.toml',
+    $required = @('Cargo.toml', 'Cargo.lock', 'crates/taskbarx-core/Cargo.toml',
         'crates/taskbarx-win32/Cargo.toml', 'crates/taskbarx-config/Cargo.toml',
-        'crates/taskbarx-configurator/Cargo.toml')
+        'crates/taskbarx-configurator/Cargo.toml', 'crates/taskbarx-shell/Cargo.toml')
     $missing = @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Root $_) -PathType Leaf) })
     if ($missing.Count -gt 0) {
-        throw "Incomplete workspace: $($missing -join ', '). Run this script AFTER integration of all six branches. Isolated-worktree checks are not application validation."
+        throw "Incomplete workspace: $($missing -join ', '). Run this script AFTER integration of all workspace members and the Cargo-generated root lockfile. Isolated-worktree checks are not application validation."
     }
 }
 
 function New-OutputDirectory {
     param(
         [Parameter(Mandatory)][string]$Root,
-        [Parameter(Mandatory)][ValidateSet('verification', 'release-evidence', 'TaskbarX-Rust', 'script-tests')][string]$Category
+        [Parameter(Mandatory)][ValidateSet('verification', 'release-evidence', 'TaskbarX-Rust', 'script-tests', 'cargo-target')][string]$Category
     )
     $parent = $Root
     foreach ($part in @('dist', $Category)) {
@@ -39,6 +39,91 @@ function New-OutputDirectory {
     $path = Join-Path $parent $id
     [void][IO.Directory]::CreateDirectory($path)
     return $path
+}
+
+function Assert-NormalPathAncestors {
+    param([Parameter(Mandatory)][string]$Path)
+    $current = [IO.Path]::GetFullPath($Path)
+    while ($current) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw "Build paths must not traverse a reparse point: $current"
+            }
+        }
+        $current = [IO.Path]::GetDirectoryName($current)
+    }
+}
+
+function New-CargoTargetDirectory {
+    param([Parameter(Mandatory)][string]$Root, [AllowEmptyString()][string]$RequestedDirectory = '')
+    Assert-NormalPathAncestors -Path $Root
+    if ([string]::IsNullOrWhiteSpace($RequestedDirectory)) {
+        $path = New-OutputDirectory -Root $Root -Category cargo-target
+    } else {
+        $pathRoot = [IO.Path]::GetPathRoot($RequestedDirectory)
+        if (-not [IO.Path]::IsPathRooted($RequestedDirectory) -or $pathRoot.Length -le 1 -or $pathRoot.EndsWith(':')) {
+            throw 'CARGO_TARGET_DIR must be an absolute path to a new or empty directory.'
+        }
+        $path = [IO.Path]::GetFullPath($RequestedDirectory).TrimEnd('\', '/')
+        foreach ($protected in @('target', 'app')) {
+            $protectedPath = [IO.Path]::GetFullPath((Join-Path $Root $protected)).TrimEnd('\', '/')
+            if ($path -eq $protectedPath -or $path.StartsWith($protectedPath + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Refusing potentially running $protected binaries: $path. Choose a fresh CARGO_TARGET_DIR outside target/app."
+            }
+        }
+        Assert-NormalPathAncestors -Path $path
+        if (Test-Path -LiteralPath $path) {
+            if (-not (Test-Path -LiteralPath $path -PathType Container) -or @(Get-ChildItem -LiteralPath $path -Force).Count -gt 0) {
+                throw "CARGO_TARGET_DIR must be new or empty; refusing to overwrite existing build outputs: $path"
+            }
+        } else { [void][IO.Directory]::CreateDirectory($path) }
+    }
+    Assert-NormalPathAncestors -Path $path
+    # CreateNew also prevents two concurrent verification jobs claiming an empty directory.
+    $claim = [IO.File]::Open((Join-Path $path '.taskbarx-validation-owner'), [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    $claim.Dispose()
+    return $path
+}
+
+function Get-WorkspaceValidationCommands {
+    # Every resolving command is locked. rustfmt does not resolve dependencies and
+    # does not accept Cargo's --locked flag. Clippy is mandatory, not opt-in.
+    @(
+        [pscustomobject]@{ Name = 'cargo-fmt'; Arguments = @('fmt', '--all', '--', '--check') },
+        [pscustomobject]@{ Name = 'cargo-test'; Arguments = @('test', '--workspace', '--locked') },
+        [pscustomobject]@{ Name = 'cargo-clippy'; Arguments = @('clippy', '--workspace', '--all-targets', '--locked', '--', '-D', 'warnings') },
+        [pscustomobject]@{ Name = 'cargo-build'; Arguments = @('build', '--workspace', '--locked', '--message-format=json') },
+        [pscustomobject]@{ Name = 'cargo-release'; Arguments = @('build', '--release', '--workspace', '--locked', '--message-format=json') }
+    )
+}
+
+function Invoke-WorkspaceValidation {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$EvidenceDirectory)
+    $outputs = @{}
+    foreach ($gate in @(Get-WorkspaceValidationCommands)) {
+        $outputs[$gate.Name] = Invoke-LoggedCommand -WorkingDirectory $Root -EvidenceDirectory $EvidenceDirectory -FilePath cargo -ArgumentList $gate.Arguments -Name $gate.Name
+    }
+    return $outputs
+}
+
+function Assert-ReadOnlyProbeArguments {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ArgumentList)
+    if ($ArgumentList.Count -ne 2 -or $ArgumentList[0] -cne 'diagnose' -or $ArgumentList[1] -cne '--json') {
+        throw 'Only the exact read-only desktop probe diagnose --json is allowed.'
+    }
+}
+
+function Invoke-ReadOnlyDiagnostic {
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$ArgumentList,
+        [Parameter(Mandatory)][string]$WorkingDirectory,
+        [Parameter(Mandatory)][string]$EvidenceDirectory
+    )
+    Assert-ReadOnlyProbeArguments -ArgumentList $ArgumentList
+    if ([IO.Path]::GetFileName($FilePath) -cne 'taskbarx.exe') { throw 'Only the verified taskbarx.exe engine may be diagnosed.' }
+    return Invoke-LoggedCommand -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory -EvidenceDirectory $EvidenceDirectory -Name diagnose
 }
 
 function Write-Utf8File {
@@ -127,16 +212,20 @@ function Invoke-LoggedCommand {
 }
 
 function Assert-WorkspaceMetadata {
-    param([Parameter(Mandatory)]$Metadata, [Parameter(Mandatory)][string]$Root)
+    param([Parameter(Mandatory)]$Metadata, [Parameter(Mandatory)][string]$Root, [string]$TargetDirectory)
     $expected = [ordered]@{
         'taskbarx-rust' = 'Cargo.toml'
         'taskbarx-core' = 'crates/taskbarx-core/Cargo.toml'
         'taskbarx-win32' = 'crates/taskbarx-win32/Cargo.toml'
         'taskbarx-config' = 'crates/taskbarx-config/Cargo.toml'
         'taskbarx-configurator' = 'crates/taskbarx-configurator/Cargo.toml'
+        'taskbarx-shell' = 'crates/taskbarx-shell/Cargo.toml'
     }
     if ([IO.Path]::GetFullPath($Metadata.workspace_root) -ne [IO.Path]::GetFullPath($Root)) {
         throw 'Cargo resolved a different workspace root.'
+    }
+    if ($TargetDirectory -and [IO.Path]::GetFullPath($Metadata.target_directory) -ne [IO.Path]::GetFullPath($TargetDirectory)) {
+        throw 'Cargo resolved a different target directory; refusing unsafe or stale artifacts.'
     }
     foreach ($name in $expected.Keys) {
         $packages = @($Metadata.packages | Where-Object { $_.name -eq $name -and $_.id -in $Metadata.workspace_members })
@@ -161,6 +250,10 @@ function Get-WorkspaceBinaryPaths {
     $records = @($BuildOutput -split '\r?\n' | Where-Object { $_.Trim() } | ForEach-Object {
         ConvertFrom-JsonEvidence -Text $_ -Label 'Cargo build artifact record'
     })
+    Assert-WorkspaceMetadata -Metadata $Metadata -Root $Root
+    $finished = @($records | Where-Object { $_.reason -eq 'build-finished' })
+    if ($finished.Count -ne 1 -or -not $finished[0].success) { throw 'Cargo did not report exactly one successful build-finished record.' }
+    $targetDirectory = [IO.Path]::GetFullPath($Metadata.target_directory).TrimEnd('\', '/')
     $paths = [ordered]@{}
     foreach ($pair in @(@('taskbarx-rust', 'taskbarx'), @('taskbarx-configurator', 'taskbarx-configurator'))) {
         $package = @($Metadata.packages | Where-Object { $_.name -eq $pair[0] -and $_.id -in $Metadata.workspace_members })[0]
@@ -169,14 +262,31 @@ function Get-WorkspaceBinaryPaths {
             $_.target.name -eq $pair[1] -and 'bin' -in $_.target.kind -and $null -ne $_.executable
         })
         if ($artifacts.Count -ne 1) { throw "Cargo did not report exactly one built executable for $($pair[1])." }
-        $expected = [IO.Path]::GetFullPath((Join-Path $Root "target/$Profile/$($pair[1]).exe"))
         $actual = [IO.Path]::GetFullPath($artifacts[0].executable)
-        if ($actual -ne $expected) {
-            throw "Unexpected binary path: $actual. Expected $expected. Remove cross-target/build.target overrides for this native Windows x64 workflow."
+        # Cargo metadata determines the target directory; compiler-artifact records
+        # determine each executable. Never guess root/target/debug or reuse stale EXEs.
+        $allowedParents = @(
+            [IO.Path]::GetFullPath((Join-Path $targetDirectory $Profile)),
+            [IO.Path]::GetFullPath((Join-Path $targetDirectory "x86_64-pc-windows-msvc/$Profile"))
+        )
+        if ([IO.Path]::GetDirectoryName($actual) -notin $allowedParents -or [IO.Path]::GetFileName($actual) -cne "$($pair[1]).exe") {
+            throw "Unexpected binary path: $actual. Expected a native Windows x64 $Profile artifact under Cargo's target directory $targetDirectory."
         }
+        Assert-NormalPathAncestors -Path $actual
         $paths[$pair[1]] = $actual
     }
     return $paths
+}
+
+function Copy-ArtifactPayload {
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Artifacts, [Parameter(Mandatory)][string]$Directory)
+    foreach ($name in $Artifacts.Keys) {
+        $source = [string]$Artifacts[$name]
+        $destination = Join-Path $Directory ([IO.Path]::GetFileName($source))
+        if (Test-Path -LiteralPath $destination) { throw "Refusing to overwrite a packaged artifact: $destination" }
+        Copy-Item -LiteralPath $source -Destination $destination
+        if ((Get-Sha256 -Path $source) -ne (Get-Sha256 -Path $destination)) { throw "Packaged artifact hash mismatch: $name" }
+    }
 }
 
 function Assert-X64Executable {
@@ -234,6 +344,7 @@ function New-LocalArchive {
 }
 
 Export-ModuleMember -Function Get-RepositoryRoot, Assert-IntegratedWorkspace, New-OutputDirectory,
+    New-CargoTargetDirectory, Get-WorkspaceValidationCommands, Invoke-WorkspaceValidation, Assert-ReadOnlyProbeArguments, Invoke-ReadOnlyDiagnostic,
     Write-Utf8File, Write-JsonFile, ConvertFrom-JsonEvidence, Assert-CommandSuccess,
-    Invoke-LoggedCommand, Assert-WorkspaceMetadata, Get-WorkspaceBinaryPaths,
+    Invoke-LoggedCommand, Assert-WorkspaceMetadata, Get-WorkspaceBinaryPaths, Copy-ArtifactPayload,
     Assert-X64Executable, Get-Sha256, Write-PayloadChecksums, New-LocalArchive

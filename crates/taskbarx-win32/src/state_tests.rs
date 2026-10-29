@@ -195,7 +195,8 @@ fn abgr_and_all_style_mappings() {
     assert_eq!(pack_abgr([0x12, 0x34, 0x56, 0x78]), 0x78563412);
     assert_eq!(accent(Style::Default, [0; 4]), None);
     for (s, n) in [
-        (Style::Transparent, 2),
+        (Style::Transparent, 6),
+        (Style::TransparentGradient, 2),
         (Style::Blur, 3),
         (Style::Acrylic, 4),
         (Style::Opaque, 1),
@@ -292,17 +293,23 @@ fn style_original_is_queried_once_and_default_restores_it() {
     assert!(c.changes.is_empty());
 }
 #[test]
-fn failed_mutations_are_not_restored() {
+fn failed_mutations_retain_baselines_for_possible_partial_writes() {
     let mut c = session();
     c.api.fail_move.insert(id(1));
     c.api.fail_style.insert(id(1));
     assert!(c.move_task_list(&id(1), Point { x: 100, y: 3 }).is_err());
     assert!(c.set_style(&id(1), Style::Blur, [0; 4]).is_err());
+    assert!(c.changes[&id(1)].position.is_some());
+    assert!(c.changes[&id(1)].accent.is_some());
+    assert_eq!(c.restore().len(), 1); // no position write needed, accent still fails
+    c.api.fail_move.clear();
+    c.api.fail_style.clear();
+    assert!(c.restore().is_empty());
     assert!(c.changes.is_empty());
-    let n = c.api.log.borrow().len();
-    c.restore();
-    assert_eq!(c.api.log.borrow().len(), n);
 }
+
+#[path = "feature_tests.rs"]
+mod feature_tests;
 #[test]
 fn partial_restore_failure_does_not_prevent_other_objects_or_effects() {
     let mut c = session();

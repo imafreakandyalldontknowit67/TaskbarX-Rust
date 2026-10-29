@@ -14,12 +14,13 @@ if ($null -eq $verification -or -not (Test-Path -LiteralPath $verification.Summa
     throw 'Verification did not return evidence. No release package can be produced.'
 }
 $verified = ConvertFrom-JsonEvidence -Text (Get-Content -LiteralPath $verification.SummaryPath -Raw) -Label 'Verification summary'
-if ($verified.status -ne 'passed' -or -not $verified.diagnostics_completed) { throw 'Verification did not pass.' }
+if ($verified.status -ne 'passed' -or -not $verified.diagnostics_completed -or -not $verified.clippy_required) { throw 'Required verification did not pass.' }
 $evidence = New-OutputDirectory -Root $root -Category release-evidence
 $state = [ordered]@{
     status = 'running'
     started_utc = [DateTime]::UtcNow.ToString('o')
     verification_evidence = $verification.EvidenceDirectory
+    cargo_target_directory = $verification.TargetDirectory
     only_read_only_desktop_diagnostics = $true
     release_executables_launched = $false
     live_positioning_tested = $false
@@ -28,24 +29,22 @@ $state = [ordered]@{
 }
 $statePath = Join-Path $evidence 'release.json'
 Write-JsonFile -Path $statePath -Value $state
-$oldTargetDir = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR', 'Process')
 try {
-    $env:CARGO_TARGET_DIR = Join-Path $root 'target'
-    $common = @{ WorkingDirectory = $root; EvidenceDirectory = $evidence }
     $lock = Join-Path $root 'Cargo.lock'
     if ((Get-Sha256 -Path $lock) -ne $verification.LockfileSha256) { throw 'Cargo.lock changed after verification.' }
-    $metadataText = Invoke-LoggedCommand @common -FilePath cargo -ArgumentList @('metadata', '--locked', '--format-version', '1') -Name cargo-metadata
-    $metadata = ConvertFrom-JsonEvidence -Text $metadataText -Label 'Release Cargo metadata'
-    Assert-WorkspaceMetadata -Metadata $metadata -Root $root
-    $buildText = Invoke-LoggedCommand @common -FilePath cargo -ArgumentList @('build', '--release', '--workspace', '--locked', '--message-format=json') -Name cargo-release
-    $binaries = Get-WorkspaceBinaryPaths -BuildOutput $buildText -Metadata $metadata -Root $root -Profile release
+    # Standalone release always runs fresh verification above. Package those exact
+    # compiler-reported release artifacts rather than rebuilding into shared target/app.
+    $metadata = $verification.Metadata
+    Assert-WorkspaceMetadata -Metadata $metadata -Root $root -TargetDirectory $verification.TargetDirectory
+    $binaries = $verification.ReleaseBinaries
     foreach ($path in $binaries.Values) { Assert-X64Executable -Path $path }
+    foreach ($name in $binaries.Keys) {
+        if ((Get-Sha256 -Path $binaries[$name]) -ne $verification.ReleaseHashes[$name]) { throw "Release artifact changed after verification: $name" }
+    }
     if ((Get-Sha256 -Path $lock) -ne $verification.LockfileSha256) { throw 'Cargo.lock changed during release.' }
 
     $package = New-OutputDirectory -Root $root -Category TaskbarX-Rust
-    foreach ($name in $binaries.Keys) {
-        Copy-Item -LiteralPath $binaries[$name] -Destination (Join-Path $package "$name.exe")
-    }
+    Copy-ArtifactPayload -Artifacts $binaries -Directory $package
     foreach ($name in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'README.md')) {
         Copy-Item -LiteralPath (Join-Path $root $name) -Destination (Join-Path $package $name)
     }
@@ -103,8 +102,7 @@ try {
     throw
 } finally {
     $state.finished_utc = [DateTime]::UtcNow.ToString('o')
-    try { Write-JsonFile -Path $statePath -Value $state }
-    finally { [Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', $oldTargetDir, 'Process') }
+    Write-JsonFile -Path $statePath -Value $state
 }
 Write-Host "Local candidate only (no live positioning/style tests): $package"
 Write-Host "ZIP: $zip`nSHA-256: $zipHash`nRelease evidence: $evidence"

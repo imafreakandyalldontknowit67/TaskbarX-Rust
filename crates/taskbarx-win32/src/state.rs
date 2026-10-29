@@ -1,6 +1,8 @@
 use crate::{
+    effects::{self, ChildIdentity, LayeredAttributes, Layout, OpacityOriginal, RegionPart},
     geometry::{axis_position, checked_destination},
-    Discovery, Point, Style, TaskbarId, TaskbarSnapshot,
+    Discovery, EnvironmentSnapshot, MeasurementBackend, Point, Rect, Style, TaskbarFeatures,
+    TaskbarId, TaskbarSnapshot,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -19,7 +21,8 @@ pub(crate) fn pack_abgr(rgba: [u8; 4]) -> u32 {
 pub(crate) fn accent(style: Style, mut rgba: [u8; 4]) -> Option<Accent> {
     let state = match style {
         Style::Default => return None,
-        Style::Transparent => 2, // transparent gradient, not undocumented state 6
+        Style::Transparent => 6, // distinct classic-taskbar fully transparent composition
+        Style::TransparentGradient => 2,
         Style::Blur => 3,
         Style::Acrylic => 4,
         Style::Opaque => {
@@ -38,6 +41,68 @@ pub(crate) fn accent(style: Style, mut rgba: [u8; 4]) -> Option<Accent> {
 /// All mutation implementations must validate identity again immediately before
 /// calling the OS, not merely rely on a previous discovery/measurement.
 pub(crate) trait Api {
+    fn layout_stamp(&mut self, id: &TaskbarId) -> Result<(u32, bool), String> {
+        let s = self.snapshot(id)?;
+        Ok((s.dpi, s.vertical))
+    }
+    fn environment(&mut self) -> Result<EnvironmentSnapshot, String> {
+        Err("Environment inspection unsupported".into())
+    }
+    fn set_measurement_backend(&mut self, _backend: MeasurementBackend) -> Result<(), String> {
+        Err("Measurement provider unsupported".into())
+    }
+    fn layout(&mut self, _id: &TaskbarId) -> Result<Layout, String> {
+        Err("Feature layout unsupported".into())
+    }
+    fn capture_opacity(&mut self, _id: &TaskbarId) -> Result<OpacityOriginal, String> {
+        Err("Opacity capture unsupported".into())
+    }
+    fn set_layered_bit(&mut self, _id: &TaskbarId, _enabled: bool) -> Result<(), String> {
+        Err("Layered windows unsupported".into())
+    }
+    fn set_layered(&mut self, _id: &TaskbarId, _a: LayeredAttributes) -> Result<(), String> {
+        Err("Layered attributes unsupported".into())
+    }
+    fn child_obsolete(&mut self, _id: &TaskbarId, _child: &ChildIdentity) -> bool {
+        false
+    }
+    fn child_visible(&mut self, _id: &TaskbarId, _child: &ChildIdentity) -> Result<bool, String> {
+        Err("Visibility capture unsupported".into())
+    }
+    fn set_child_visible(
+        &mut self,
+        _id: &TaskbarId,
+        _child: &ChildIdentity,
+        _visible: bool,
+    ) -> Result<(), String> {
+        Err("Visibility mutation unsupported".into())
+    }
+    fn child_position(&mut self, _id: &TaskbarId, _child: &ChildIdentity) -> Result<Point, String> {
+        Err("Control position unsupported".into())
+    }
+    fn move_child(
+        &mut self,
+        _id: &TaskbarId,
+        _child: &ChildIdentity,
+        _p: Point,
+        _expected: Point,
+    ) -> Result<(), String> {
+        Err("Control movement unsupported".into())
+    }
+    fn capture_region(&mut self, _id: &TaskbarId) -> Result<Option<Vec<u8>>, String> {
+        Err("Region capture unsupported".into())
+    }
+    fn apply_region(
+        &mut self,
+        _id: &TaskbarId,
+        _parts: &[RegionPart],
+        _client: Rect,
+    ) -> Result<(), String> {
+        Err("Regions unsupported".into())
+    }
+    fn restore_region(&mut self, _id: &TaskbarId, _data: Option<&[u8]>) -> Result<(), String> {
+        Err("Region restoration unsupported".into())
+    }
     fn discover(&mut self) -> Result<Discovery, String>;
     fn validate(&mut self, id: &TaskbarId) -> Result<(), String>;
     // True only for positively identified destruction/replacement, not query errors.
@@ -54,6 +119,9 @@ pub(crate) trait Api {
     fn position(&mut self, id: &TaskbarId) -> Result<(Point, bool), String>;
     fn move_to(&mut self, id: &TaskbarId, p: Point, expected: (Point, bool)) -> Result<(), String>;
     fn query_accent(&mut self, id: &TaskbarId) -> Result<Option<Accent>, String>;
+    fn check_accent(&mut self, _a: Accent) -> Result<(), String> {
+        Ok(())
+    }
     fn apply_accent(&mut self, id: &TaskbarId, a: Accent) -> Result<(), String>;
     fn restore_accent(
         &mut self,
@@ -74,6 +142,7 @@ pub(crate) struct Controller<A: Api> {
     known: HashSet<TaskbarId>,
     changes: HashMap<TaskbarId, Original>,
     diagnostics: Vec<String>,
+    effects: effects::Journal,
 }
 
 impl<A: Api> Controller<A> {
@@ -83,7 +152,26 @@ impl<A: Api> Controller<A> {
             known: HashSet::new(),
             changes: HashMap::new(),
             diagnostics: Vec::new(),
+            effects: effects::Journal::default(),
         }
+    }
+    pub fn environment(&mut self) -> Result<EnvironmentSnapshot, String> {
+        self.api.environment()
+    }
+    pub fn set_measurement_backend(&mut self, backend: MeasurementBackend) -> Result<(), String> {
+        self.api.set_measurement_backend(backend)
+    }
+    pub fn apply_features(
+        &mut self,
+        id: &TaskbarId,
+        features: &TaskbarFeatures,
+    ) -> Result<bool, String> {
+        if features.opacity.is_some_and(|p| p > 100) {
+            return Err("Opacity must be 0..100 percent".into());
+        }
+        self.require_known(id)?;
+        self.set_style(id, features.style, features.color)?;
+        self.effects.apply(&mut self.api, id, features)
     }
     pub fn discover(&mut self) -> Result<Discovery, String> {
         let mut d = self.api.discover()?;
@@ -102,6 +190,8 @@ impl<A: Api> Controller<A> {
     }
     pub fn move_task_list(&mut self, id: &TaskbarId, p: Point) -> Result<(), String> {
         self.require_known(id)?;
+        self.effects.suspend_region(&mut self.api, id)?;
+        self.effects.prepare_move(&mut self.api, id)?;
         let s = self.api.snapshot(id)?;
         if self
             .changes
@@ -115,21 +205,22 @@ impl<A: Api> Controller<A> {
         }
         let p = checked_destination(&s, p)?;
         if p == s.position {
-            return Ok(());
+            return self.effects.update_region(&mut self.api, id);
         }
-        self.api.move_to(id, p, (s.position, s.vertical))?;
         self.changes
             .entry(*id)
             .or_default()
             .position
             .get_or_insert((s.position, s.vertical));
-        Ok(())
+        self.api.move_to(id, p, (s.position, s.vertical))?;
+        self.effects.update_region(&mut self.api, id)
     }
     pub fn restore_position(&mut self, id: &TaskbarId) -> Result<(), String> {
         let Some((original, vertical)) = self.changes.get(id).and_then(|c| c.position) else {
             return Ok(());
         };
         self.api.validate(id)?;
+        self.effects.suspend_region(&mut self.api, id)?;
         let (current, now_vertical) = self.api.position(id)?;
         if now_vertical != vertical {
             return Err(
@@ -150,6 +241,7 @@ impl<A: Api> Controller<A> {
         };
         self.require_known(id)?;
         // Accent ownership follows the root, not a replaceable task-list child.
+        self.api.check_accent(a)?;
         let previous = self.changes.keys().copied().find(|other| {
             other.root == id.root
                 && other.process_id == id.process_id
@@ -167,15 +259,21 @@ impl<A: Api> Controller<A> {
             Some(a) => a,
             None => self.api.query_accent(id)?,
         };
-        self.api.apply_accent(id, a)?;
         self.changes
             .entry(*id)
             .or_default()
             .accent
             .get_or_insert(original);
-        Ok(())
+        self.api.apply_accent(id, a)
     }
     fn restore_style(&mut self, id: &TaskbarId) -> Result<(), String> {
+        let owner =
+            self.changes.keys().copied().find(|other| {
+                effects::same_root(id, other) && self.changes[other].accent.is_some()
+            });
+        let Some(id) = owner.as_ref() else {
+            return Ok(());
+        };
         let Some(original) = self.changes.get(id).and_then(|c| c.accent) else {
             return Ok(());
         };
@@ -197,9 +295,30 @@ impl<A: Api> Controller<A> {
         }
     }
     pub fn restore(&mut self) -> Vec<String> {
-        let ids: Vec<_> = self.changes.keys().copied().collect();
+        let mut ids: Vec<_> = self.changes.keys().copied().collect();
+        ids.extend(self.effects.roots());
+        let mut seen = HashSet::new();
         let mut errors = Vec::new();
         for id in ids {
+            if seen.insert(effects::Root::from(&id)) {
+                errors.extend(self.restore_taskbar(&id));
+            }
+        }
+        errors
+    }
+    pub fn restore_taskbar(&mut self, root: &TaskbarId) -> Vec<String> {
+        let mut errors = self.effects.restore(&mut self.api, root);
+        let mut ids: Vec<_> = self
+            .changes
+            .keys()
+            .copied()
+            .filter(|id| effects::same_root(root, id))
+            .collect();
+        ids.sort_by_key(|id| (id.task_list, id.parent));
+        for id in ids {
+            if !self.changes.contains_key(&id) {
+                continue;
+            }
             if self.api.obsolete(&id) {
                 self.changes.get_mut(&id).unwrap().position = None;
                 if self.api.root_obsolete(&id) {
