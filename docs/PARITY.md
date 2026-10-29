@@ -17,7 +17,7 @@ This inventory covers **every field in Settings.vb, every switch parsed by Main.
 | [MainWindow.xaml][xaml] | 290 | `3bfd0116e91fe755aaf421933bf62e84f04d3373e2ad9c712888567799287035` |
 | [MainWindow.xaml.vb][gui] | 2418 | `708d437b71d77f0846c8629d2b1437cb48ff47d61b36d63f30d23f8f7691259d` |
 
-**Status labels:** **mapped** means a source/API/test location exists, not that live behavior was tested. Source integration was reviewed on 2026-10-29 against the six-package workspace; historical test results are recorded in [VALIDATION](VALIDATION.md). **excluded** is deliberate. **dormant upstream** means no functional consumer was found in the reviewed source/tree search. v0.1.2 verification is pending.
+**Status labels:** **mapped** means a source/API/test location exists, not that live behavior was tested. Source integration was reviewed on 2026-10-29 against the six-package workspace; historical test results are recorded in [VALIDATION](VALIDATION.md). **excluded** is deliberate. **dormant upstream** means no functional consumer was found in the reviewed source/tree search. v0.1.2 automated checks are summarized in [BUILD-v0.1.2](BUILD-v0.1.2.md).
 
 ### Rust source/test destinations
 

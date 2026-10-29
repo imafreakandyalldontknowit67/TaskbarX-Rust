@@ -2,7 +2,7 @@
 
 ## Source and verification scope
 
-The shell crate's public APIs, native adapters and fake tests listed here are wired into the CLI, runtime and configurator. Loading the crate has no side effects. **Source/test mappings are not live shell verification.** See [PARITY](PARITY.md) for mappings and [VALIDATION](VALIDATION.md) for historical results; v0.1.2 verification is pending. Support is limited to the Windows 10 classic taskbar; Windows 11 is unsupported.
+The shell crate's public APIs, native adapters and fake tests listed here are wired into the CLI, runtime and configurator. Loading the crate has no side effects. **Source/test mappings are not live shell verification.** See [PARITY](PARITY.md) for mappings and [VALIDATION](VALIDATION.md) for historical results; v0.1.2 automated checks are summarized in [BUILD-v0.1.2](BUILD-v0.1.2.md). Support is limited to the Windows 10 classic taskbar; Windows 11 is unsupported.
 
 | API | Source and non-mutating tests |
 | --- | --- |

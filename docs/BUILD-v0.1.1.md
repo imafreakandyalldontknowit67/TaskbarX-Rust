@@ -1,6 +1,6 @@
 # v0.1.1 build and compatibility evidence
 
-Historical v0.1.1 build checks completed on Windows 10 build 19045 (x64), 2026-10-29, with Rust 1.99.1 and the locked dependency graph. These results apply only to [v0.1.1](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.1), not the planned v0.1.2 release. They do not certify every visual effect or Windows configuration.
+Historical v0.1.1 build checks completed on Windows 10 build 19045 (x64), 2026-10-29, with Rust 1.99.1 and the locked dependency graph. These results apply only to [v0.1.1](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.1), not later releases. They do not certify every visual effect or Windows configuration.
 
 ## Historical architecture scope
 
