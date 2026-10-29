@@ -25,3 +25,5 @@ The compiler intermittently crashed while compiling Windows dependencies during 
 Modern Windows 11 taskbars remain unsupported. Existing startup enable/status checks are not an actual sign-in test. Rainmeter archives are structurally checked against the official format; installation and desktop launcher interaction have not been live-tested. The launcher only opens settings on an explicit click; Apply and startup registration remain separate actions.
 
 Release archives exclude local diagnostics, machine-specific build metadata, source trees and upstream artwork. SHA256SUMS verifies download consistency, not a digital signature. These binaries are unsigned. The repository remains private.
+
+Packaging validation: 2,035 inert-fixture assertions passed on PowerShell 5.1; privileged file-symlink fixtures were skipped. All four real archives passed independent CRC, entry uniqueness, embedded-binary byte equality, PE architecture and (for Rainmeter) footer checks. These are not live Rainmeter tests.

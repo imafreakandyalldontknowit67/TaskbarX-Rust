@@ -6,25 +6,24 @@
 
 An **independent Rust rewrite of Chris Andriessen's [TaskbarX](https://github.com/ChrisAnd1998/TaskbarX)** for taskbar positioning and appearance. Not an official upstream release.
 
-**v0.1.0 is an unsigned initial release**. The existing tested scope is **native Windows 10 x64 with the classic Explorer taskbar**, not comprehensive feature certification.
+**v0.1.1** provides complete, unsigned portable packages. The repository remains private.
 
 ## Downloads / quick start
 
-**Choose an architecture-specific portable ZIP if attached to the [v0.1.0 release page](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.0).** Downloads require access while this repository is private. These are planned package names, not confirmation that builds or uploads exist:
+Download one package, not separate EXEs. [Latest release](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/latest).
 
-| Architecture | Primary portable ZIP, if available | Optional Rainmeter package, if available |
+| Architecture | Portable ZIP | Optional Rainmeter launcher |
 | --- | --- | --- |
-| x64 | `TaskbarX-Rust_0.1.0_x64.zip` | `TaskbarX-Rust_0.1.0_x64.rmskin` |
-| x86 | `TaskbarX-Rust_0.1.0_x86.zip` | `TaskbarX-Rust_0.1.0_x86.rmskin` |
-| ARM64 | `TaskbarX-Rust_0.1.0_arm64.zip` | None |
+| x64 (recommended for 64-bit Intel/AMD Windows) | [Download ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x64.zip) | [Download .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x64.rmskin) |
+| x86 (32-bit; limited validation) | [Download ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x86.zip) | [Download .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x86.rmskin) |
 
-**x86 and ARM64 are build candidates, not runtime-verified platforms.** Packaging support, compilation, runtime verification and uploaded availability are distinct. There is no neutral/AnyCPU executable or supported ARM32 package; architecture matching does not establish shell compatibility. See [package selection, evidence and layouts](docs/DISTRIBUTION.md).
+**Windows 10 classic taskbar only.** x64 passed native build/test checks. x86 passed build/tests and read-only detection under WOW64 on Windows 10 x64; native 32-bit Windows and live effects were not tested. ARM64 is unavailable because its Microsoft build tools are missing. No ARM32 or neutral/AnyCPU build is provided. See [build evidence](docs/BUILD-v0.1.1.md) and [package details](docs/DISTRIBUTION.md).
 
-1. If the matching ZIP is available, download it and **extract all files into a stable folder**, keeping both EXEs together. Keep Windows security checks enabled; the binaries are unsigned.
+1. Download the matching ZIP and **extract all files into a stable folder**, keeping both EXEs together. Keep Windows security checks enabled; the binaries are unsigned.
 2. Open `Open Settings.cmd` or `taskbarx-configurator.exe`. Opening settings **does not start the engine**.
 3. Select your settings and press **Apply** to save and start/restart the engine. **Save** only persists JSON; **Apply never enables startup**.
 
-The ZIP contract includes both EXEs, `Open Settings.cmd`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `settings.sample.json`, a concise `README.txt` and `docs/licenses/`. Repository Markdown guides, source, artwork and private developer evidence are not bundled. GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives are source, **not ready-to-run downloads**.
+Each ZIP includes both EXEs, `Open Settings.cmd`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `settings.sample.json`, a concise `README.txt` and `docs/licenses/`. Repository Markdown guides, source, artwork and private developer evidence are not bundled. GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives are source, **not ready-to-run downloads**.
 
 Rainmeter is optional and separately installed: use an available matching `.rmskin`, manually load `Launcher.ini`, then explicitly click its settings launcher. Installation/loading/refresh does not launch the configurator, apply the engine or register TaskbarX startup. The click only opens settings; Apply and Startup remain separate actions. See the [Rainmeter workflow and official references](docs/DISTRIBUTION.md#optional-rainmeter-workflow).
 

@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
 Packages two local PE candidates without building, downloading, or executing them.
@@ -23,7 +23,7 @@ param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$BinaryDirectory,
     [Parameter(Mandatory)][ValidateSet('x64', 'x86', 'arm64')][string]$Architecture,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$OutputDirectory,
-    [ValidateNotNullOrEmpty()][string]$Version = '0.1.0'
+    [ValidateNotNullOrEmpty()][string]$Version = '0.1.1'
 )
 
 Set-StrictMode -Version Latest
@@ -289,7 +289,7 @@ try {
     $texts = @(
         (New-TextPayload 'Open Settings.cmd' "@echo off`nsetlocal DisableDelayedExpansion`nstart `"TaskbarX Rust Settings`" `"%~dp0taskbarx-configurator.exe`"`n"),
         (New-TextPayload 'README.txt' @"
-TaskbarX-Rust $Version - $Architecture unsigned distribution candidate
+TaskbarX-Rust $Version - $Architecture unsigned distribution
 
 Independent Rust rewrite of TaskbarX by Chris Andriessen; not an official
 upstream release or endorsement. See LICENSE, THIRD_PARTY_NOTICES.md and
@@ -310,7 +310,7 @@ Startup registration is separate: use Startup Enable/update explicitly after
 choosing the stable folder. Save and Apply do not enable or update startup.
 If you move the folder, explicitly update startup again, or Disable it.
 
-RAINMETER (x64/x86 candidates only; no ARM Rainmeter package)
+RAINMETER (x64/x86 only; no ARM Rainmeter package)
 Rainmeter is optional and is not required for the portable ZIP. Installation of
 the .rmskin alone does not run either application. Manually load Launcher.ini in
 TaskbarX-Rust-<arch>, then explicitly click its visible Open Settings target.
@@ -320,7 +320,7 @@ separate Startup Enable/update action as described above. No automatic Load,
 plugins, layouts, installation hooks or startup changes are supplied.
 
 LIMITS / RELEASE REVIEW
-These are unsigned candidates, not signed or certified releases. Packaging
+These are unsigned packages, not signed or certified releases. Packaging
 checks the declared PE machine type of BOTH files, not genuine build provenance,
 runtime compatibility, complete license compliance, or safety. Choose the
 architecture appropriate to your Windows system. Rainmeter's footer does not
@@ -337,10 +337,11 @@ Nothing in this package establishes permission or readiness to publish.
     $skinTexts = @(
         (New-TextPayload 'RMSKIN.ini' @"
 [rmskin]
-Name=TaskbarX-Rust $Architecture unsigned candidate
+Name=TaskbarX-Rust $Architecture unsigned package
 Author=TaskbarX-Rust independent rewrite contributors
 Version=$Version
 MinimumRainmeter=4.5.0
+MinimumWindows=10.0
 "@),
         (New-TextPayload "$skin/Launcher.ini" @"
 [Rainmeter]
@@ -348,15 +349,15 @@ Update=-1
 AccurateText=1
 
 [Metadata]
-Name=TaskbarX-Rust $Architecture candidate launcher
+Name=TaskbarX-Rust $Architecture launcher
 Author=TaskbarX-Rust independent rewrite contributors
-Information=Unsigned $Architecture candidate. Click to open settings only. Apply/start and Startup Enable/update are separate explicit actions.
+Information=Unsigned $Architecture package. Click to open settings only. Apply/start and Startup Enable/update are separate explicit actions.
 Version=$Version
 License=MIT
 
 [OpenSettings]
 Meter=String
-Text=Open TaskbarX-Rust Settings ($Architecture candidate)
+Text=Open TaskbarX-Rust Settings ($Architecture)
 FontFace=Segoe UI
 FontSize=12
 FontColor=255,255,255,255

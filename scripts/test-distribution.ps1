@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
 Offline, dependency-free distribution tests using only inert fixture PE bytes.
@@ -303,18 +303,19 @@ function Assert-Package {
         }
         $metadata = ConvertFrom-FixtureIni $rmskin['RMSKIN.ini']
         Assert-Names @($metadata.Keys) @('rmskin') 'Root [rmskin] metadata'
-        Assert-Names @($metadata.rmskin.Keys) @('Name', 'Author', 'Version', 'MinimumRainmeter') 'Metadata has no Load, LoadType, layouts or installation hooks'
-        Assert-Test ($metadata.rmskin.Name -ceq "TaskbarX-Rust $Architecture unsigned candidate") 'Metadata labels architecture and unsigned candidate'
+        Assert-Names @($metadata.rmskin.Keys) @('Name', 'Author', 'Version', 'MinimumRainmeter', 'MinimumWindows') 'Metadata has no Load, LoadType, layouts or installation hooks'
+        Assert-Test ($metadata.rmskin.Name -ceq "TaskbarX-Rust $Architecture unsigned package") 'Metadata labels architecture and unsigned package'
         Assert-Test ($metadata.rmskin.Version -ceq $Version) 'Metadata preserves safe version'
         Assert-Test ($metadata.rmskin.Author -ceq 'TaskbarX-Rust independent rewrite contributors') 'Independent rewrite author'
         Assert-Test ($metadata.rmskin.MinimumRainmeter -ceq '4.5.0') 'Valid minimum Rainmeter version'
+        Assert-Test ($metadata.rmskin.MinimumWindows -ceq '10.0') 'Windows 10 minimum'
         $launcher = ConvertFrom-FixtureIni $rmskin["$skin/Launcher.ini"]
         Assert-Names @($launcher.Keys) @('Rainmeter', 'Metadata', 'OpenSettings') 'Only approved launcher sections, no measures'
         Assert-Names @($launcher.Rainmeter.Keys) @('Update', 'AccurateText') 'No load, refresh, update, close actions'
         Assert-Names @($launcher.Metadata.Keys) @('Name', 'Author', 'Information', 'Version', 'License') 'Only descriptive metadata'
         Assert-Names @($launcher.OpenSettings.Keys) @('Meter', 'Text', 'FontFace', 'FontSize', 'FontColor', 'SolidColor',
             'Padding', 'AntiAlias', 'MouseActionCursor', 'LeftMouseUpAction') 'Click-only meter, no implicit execution mechanism'
-        Assert-Test ($launcher.OpenSettings.Meter -ceq 'String' -and $launcher.OpenSettings.Text -match "Settings.*$Architecture candidate") 'Visible labeled click target'
+        Assert-Test ($launcher.OpenSettings.Meter -ceq 'String' -and $launcher.OpenSettings.Text -match "Settings.*$Architecture") 'Visible labeled click target'
         Assert-Test ($launcher.OpenSettings.FontColor -ceq '255,255,255,255' -and [int]$launcher.OpenSettings.FontSize -gt 0) 'Click target is not transparent or zero-sized'
         $action = $launcher.OpenSettings.LeftMouseUpAction
         Assert-Test ($action -ceq '["#@#TaskbarX-Rust\taskbarx-configurator.exe"]') 'Only explicitly clicking launches the quoted #@# configurator path'
@@ -361,10 +362,10 @@ try {
         $machine = @{ x64 = 0x8664; x86 = 0x014c; arm64 = 0xaa64 }[$architecture]
         $fixture = New-FixtureRepository $architecture $machine
         [IO.File]::SetAttributes((Join-Path $fixture.Root $noticeNames[1]), [IO.FileAttributes]::Hidden)
-        foreach ($version in @('0.1.0', '1.2.3-rc.4+offline_7')) {
+        foreach ($version in @('0.1.1', '1.2.3-rc.4+offline_7')) {
             $output = New-OutputPath
             $arguments = @{ Fixture = $fixture; Architecture = $architecture; Output = $output }
-            if ($version -ne '0.1.0') {
+            if ($version -ne '0.1.1') {
                 $arguments.Version = $version
                 [void][IO.Directory]::CreateDirectory($output) # Explicit existing empty output is supported.
             }
