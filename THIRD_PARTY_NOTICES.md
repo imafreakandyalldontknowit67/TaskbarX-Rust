@@ -31,5 +31,5 @@ A local validation ZIP is not a claim that redistribution obligations have been 
 
 ## Private preview artwork and dependency notices
 
-See [artwork provenance](docs/assets/README.md) for the unchanged upstream banner and CC-BY-4.0 Rust logo, and [dependency license texts](docs/licenses/README.md) for the locked Rust dependencies. The banner depicts upstream, not this build; review its separate artwork rights before making the repository public. Optional upstream .ico downloads are linked rather than bundled.
+See [artwork provenance](docs/assets/README.md) for the upstream banner, its edited Rust-badge variant, and the CC-BY-4.0 Rust logo reference, and [dependency license texts](docs/licenses/README.md) for the locked Rust dependencies. The banner depicts upstream, not this build; review its separate artwork rights before making the repository public. Optional upstream .ico downloads are linked rather than bundled.
 
