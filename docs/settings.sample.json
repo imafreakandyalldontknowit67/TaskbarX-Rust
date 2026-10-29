@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "center": true,
+  "primary": true,
+  "secondary": true,
+  "center_between": false,
+  "primary_offset": 0,
+  "secondary_offset": 0,
+  "animation": "cubiceaseinout",
+  "animation_ms": 300,
+  "poll_ms": 400,
+  "style": "default",
+  "color": [0, 0, 0, 128]
+}
