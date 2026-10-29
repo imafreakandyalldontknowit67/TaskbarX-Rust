@@ -1,0 +1,44 @@
+# Dependency license texts
+
+Collected from the exact Cargo.lock-resolved source packages. These files preserve upstream notices; they are not a claim of legal certification. Both license alternatives are retained where supplied.
+
+- **anstream-1.0.0** - MIT OR Apache-2.0; https://github.com/rust-cli/anstyle.git
+- **anstyle-1.0.14** - MIT OR Apache-2.0; https://github.com/rust-cli/anstyle.git
+- **anstyle-parse-1.0.0** - MIT OR Apache-2.0; https://github.com/rust-cli/anstyle.git
+- **anstyle-query-1.1.5** - MIT OR Apache-2.0; https://github.com/rust-cli/anstyle.git
+- **anstyle-wincon-3.0.11** - MIT OR Apache-2.0; https://github.com/rust-cli/anstyle.git
+- **clap-4.6.7** - MIT OR Apache-2.0; https://github.com/clap-rs/clap
+- **clap_builder-4.6.7** - MIT OR Apache-2.0; https://github.com/clap-rs/clap
+- **clap_derive-4.6.7** - MIT OR Apache-2.0; https://github.com/clap-rs/clap
+- **clap_lex-1.1.1** - MIT OR Apache-2.0; https://github.com/clap-rs/clap
+- **colorchoice-1.0.5** - MIT OR Apache-2.0; https://github.com/rust-cli/anstyle.git
+- **heck-0.5.0** - MIT OR Apache-2.0; https://github.com/withoutboats/heck
+- **is_terminal_polyfill-1.70.2** - MIT OR Apache-2.0; https://github.com/polyfill-rs/is_terminal_polyfill
+- **itoa-1.0.18** - MIT OR Apache-2.0; https://github.com/dtolnay/itoa
+- **memchr-2.8.3** - Unlicense OR MIT; https://github.com/BurntSushi/memchr
+- **once_cell_polyfill-1.70.2** - MIT OR Apache-2.0; https://github.com/polyfill-rs/once_cell_polyfill
+- **proc-macro2-1.0.107** - MIT OR Apache-2.0; https://github.com/dtolnay/proc-macro2
+- **quote-1.0.47** - MIT OR Apache-2.0; https://github.com/dtolnay/quote
+- **serde-1.0.229** - MIT OR Apache-2.0; https://github.com/serde-rs/serde
+- **serde_core-1.0.229** - MIT OR Apache-2.0; https://github.com/serde-rs/serde
+- **serde_derive-1.0.229** - MIT OR Apache-2.0; https://github.com/serde-rs/serde
+- **serde_json-1.0.154** - MIT OR Apache-2.0; https://github.com/serde-rs/json
+- **strsim-0.11.1** - MIT; https://github.com/rapidfuzz/strsim-rs
+- **syn-2.0.119** - MIT OR Apache-2.0; https://github.com/dtolnay/syn
+- **syn-3.0.9** - MIT OR Apache-2.0; https://github.com/dtolnay/syn
+- **unicode-ident-1.0.27** - (MIT OR Apache-2.0) AND Unicode-3.0; https://github.com/dtolnay/unicode-ident
+- **utf8parse-0.2.2** - Apache-2.0 OR MIT; https://github.com/alacritty/vte
+- **windows-0.61.3** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-collections-0.2.0** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-core-0.61.2** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-future-0.2.1** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-implement-0.60.2** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-interface-0.59.3** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-link-0.1.3** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-link-0.2.1** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-numerics-0.2.0** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-result-0.3.4** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-strings-0.4.2** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-sys-0.61.2** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **windows-threading-0.1.0** - MIT OR Apache-2.0; https://github.com/microsoft/windows-rs
+- **zmij-1.0.23** - MIT; https://github.com/dtolnay/zmij

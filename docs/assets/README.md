@@ -1,0 +1,6 @@
+# Artwork provenance
+
+- `taskbarx-banner.png`: unmodified banner from the original [TaskbarX README](https://github.com/ChrisAnd1998/TaskbarX), by Chris Andriessen / the TaskbarX project. [Original image](https://user-images.githubusercontent.com/50437199/90984468-6c5a1a00-e575-11ea-9af0-a874115e07e7.png). It depicts upstream TaskbarX, not screenshots of this Rust build. The upstream source repository is MIT-licensed; separate rights to the wallpapers/artwork have not been established. Retained for the requested private preview; review or replace before public distribution.
+- `rust-logo.svg`: unmodified `rust-logo-white-outline.svg` from [rust-lang/rust-artwork](https://github.com/rust-lang/rust-artwork/tree/main/logo). Copyright the Rust project contributors. Licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). No changes to the artwork; displayed separately beside the TaskbarX banner. Rust is a trademark of the Rust Foundation. This independent project is not endorsed by the Rust project or Foundation.
+
+Optional upstream Start icons are linked, not redistributed. No upstream EXEs, signing keys or Store assets are included.

@@ -28,3 +28,8 @@ Review the **actual integrated Cargo.lock and Cargo metadata**, including `taskb
 That file is an **inventory, not a license-compliance certification**. Declared expressions alone do not replace required copyright/license texts. Missing/ambiguous metadata, vendored source, fonts and resources need manual review. Add required supplemental notices/texts under `docs/licenses/`; `docs/` is included in the portable package. Rebuild/package after notice changes.
 
 A local validation ZIP is not a claim that redistribution obligations have been fully reviewed or permission to publish. The scripts do not sign, upload or publish.
+
+## Private preview artwork and dependency notices
+
+See [artwork provenance](docs/assets/README.md) for the unchanged upstream banner and CC-BY-4.0 Rust logo, and [dependency license texts](docs/licenses/README.md) for the locked Rust dependencies. The banner depicts upstream, not this build; review its separate artwork rights before making the repository public. Optional upstream .ico downloads are linked rather than bundled.
+
