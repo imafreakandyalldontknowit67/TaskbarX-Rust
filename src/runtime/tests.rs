@@ -373,7 +373,7 @@ fn selection_and_center_false_never_move_unselected_taskbars() {
 }
 
 #[test]
-fn empty_or_unsafe_measurements_restore_previous_position() {
+fn transient_empty_or_unsafe_measurements_hold_position_then_resume() {
     for unsafe_rect in [false, true] {
         let mut state = State::default();
         let mut backend = Fake::default();
@@ -397,11 +397,32 @@ fn empty_or_unsafe_measurements_restore_previous_position() {
             .refresh(&mut backend, discovery(vec![empty]), &settings, 200)
             .unwrap();
         assert!(state.animations.is_empty());
-        assert!(backend
-            .0
-            .borrow()
-            .events
-            .contains(&"restore-position:1".into()));
+        assert!(backend.0.borrow().position_restores.is_empty());
+        assert!(state.moved.contains(&snapshot(1, true, 340).id));
+        let before = backend.0.borrow().moves.len();
+        state.frame(&mut backend, &settings, 250).unwrap();
+        assert_eq!(backend.0.borrow().moves.len(), before);
+        state
+            .refresh(
+                &mut backend,
+                discovery(vec![snapshot(1, true, 340)]),
+                &settings,
+                300,
+            )
+            .unwrap();
+        state.frame(&mut backend, &settings, 400).unwrap();
+        assert_eq!(backend.0.borrow().moves.len(), before);
+        let mut disabled = settings.clone();
+        disabled.center = false;
+        state
+            .refresh(
+                &mut backend,
+                discovery(vec![snapshot(1, true, 340)]),
+                &disabled,
+                500,
+            )
+            .unwrap();
+        assert_eq!(backend.0.borrow().position_restores.len(), 1);
     }
 }
 
@@ -612,7 +633,7 @@ fn partial_errors_restore_before_backoff_and_preserve_original_error() {
 }
 
 #[test]
-fn invalid_handle_failure_discards_state_and_rediscovers_with_backoff() {
+fn discovery_failure_freezes_writes_and_rediscovers_with_backoff() {
     let backend = Fake::default();
     backend.0.borrow_mut().discoveries.extend([
         Err("invalid taskbar handle".into()),
@@ -623,10 +644,7 @@ fn invalid_handle_failure_discards_state_and_rediscovers_with_backoff() {
     settings.animation = "none".into();
     drive(backend.clone(), &mut clock, &settings).unwrap();
     assert_eq!(clock.waits[0], 100);
-    assert_eq!(
-        &backend.0.borrow().events[..3],
-        ["discover", "restore-all", "discover"]
-    );
+    assert_eq!(&backend.0.borrow().events[..2], ["discover", "discover"]);
     assert_eq!(backend.0.borrow().moves[0].0.root, 100);
 }
 
@@ -731,7 +749,7 @@ fn restoration_runs_during_unwind() {
 }
 
 #[test]
-fn unsafe_measurements_restore_even_after_a_discovery_gap() {
+fn unsafe_measurements_hold_position_even_after_a_discovery_gap() {
     let mut state = State::default();
     let mut backend = Fake::default();
     let settings = settings();
@@ -752,11 +770,9 @@ fn unsafe_measurements_restore_even_after_a_discovery_gap() {
     state
         .refresh(&mut backend, discovery(vec![returned]), &settings, 70)
         .unwrap();
-    assert!(backend
-        .0
-        .borrow()
-        .events
-        .contains(&"restore-position:1".into()));
+    assert!(backend.0.borrow().position_restores.is_empty());
+    assert!(state.moved.contains(&snapshot(1, true, 100).id));
+    assert!(state.animations.is_empty());
 }
 #[test]
 fn bounce_peak_does_not_end_animation_before_duration() {
@@ -921,7 +937,7 @@ fn fullscreen_freezes_all_mutation_preserves_journal_and_rediscovers_on_resume()
     let d = fake.0.borrow();
     assert_eq!(d.discovery_times, [0, 300]);
     assert!(d.mutation_times.iter().all(|at| *at < 100 || *at >= 300));
-    assert!(d.events.contains(&"restore-position:1".into()));
+    assert!(d.position_restores.is_empty());
     assert_eq!(d.events.iter().filter(|e| *e == "restore-all").count(), 1);
 }
 
@@ -1333,4 +1349,26 @@ fn auto_hidden_and_vertical_negative_taskbars_map_to_the_nearest_monitor() {
         bottom: 40,
     };
     assert!(!monitor_for(&s, &e).unwrap().maximized);
+}
+
+#[test]
+fn discovery_gap_after_centering_does_not_restore_until_shutdown() {
+    let backend = Fake::default();
+    backend.0.borrow_mut().discoveries.extend([
+        Ok(discovery(vec![snapshot(1, true, 50)])),
+        Err("Explorer accessibility temporarily unavailable".into()),
+        Ok(discovery(vec![snapshot(1, true, 340)])),
+    ]);
+    let mut config = settings();
+    config.animation = "none".into();
+    config.poll_ms = 50;
+    drive(backend.clone(), &mut Clock::until(600), &config).unwrap();
+    let data = backend.0.borrow();
+    assert_eq!(data.moves.len(), 1);
+    assert!(data.position_restores.is_empty());
+    assert_eq!(
+        data.events.iter().filter(|e| *e == "restore-all").count(),
+        1
+    );
+    assert_eq!(data.events.last().unwrap(), "restore-all");
 }

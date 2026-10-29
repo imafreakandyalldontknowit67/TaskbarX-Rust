@@ -4,9 +4,9 @@ An **independent Rust rewrite** of [ChrisAnd1998/TaskbarX](https://github.com/Ch
 
 ## Quick use
 
-**v0.1.2 is unsigned.** Download the matching complete package from the [release page](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.2). Keep Windows security checks enabled.
+**v0.1.3 is unsigned.** Download the matching complete package from the [release page](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.3). Keep Windows security checks enabled.
 
-**Windows 10 classic taskbar only; Windows 11 is unsupported.** Choose x64 for 64-bit Intel/AMD Windows. v0.1.2 x86 checks ran under WOW64, not native 32-bit Windows. ARM64 is unavailable and unvalidated. See [package selection](DISTRIBUTION.md) and [v0.1.2 evidence](BUILD-v0.1.2.md).
+**Windows 10 classic taskbar only; Windows 11 is unsupported.** Choose x64 for 64-bit Intel/AMD Windows. v0.1.3 x86 checks ran under WOW64, not native 32-bit Windows. ARM64 is unavailable and unvalidated. See [package selection](DISTRIBUTION.md) and [v0.1.3 evidence](BUILD-v0.1.3.md).
 
 1. Once available, download the matching ZIP and **extract all files into a stable folder**. Keep both EXEs beside each other; do not run from inside the archive.
 2. Open `Open Settings.cmd` or `taskbarx-configurator.exe`. Opening settings does not start the engine.
@@ -26,13 +26,13 @@ Reference: [compatibility and evidence](#compatibility-and-evidence), [architect
 
 ## Compatibility and evidence
 
-v0.1.2 checks covered **native Windows 10 x64 with the classic Explorer taskbar** and x86 build/tests and read-only detection under WOW64 on Windows 10 x64. Native 32-bit Windows and live effects remain untested. ARM64 is unavailable and unvalidated; there is no supported ARM32 or neutral/AnyCPU package. See [v0.1.2 build evidence](BUILD-v0.1.2.md) and the [architecture/verification matrix](DISTRIBUTION.md#architecture-and-verification). Packaging support does not establish runtime compatibility or download availability. Windows 11, including classic-shell modifications, is unsupported; elevation is not a compatibility workaround. Microsoft Store packaging/protocol activation is excluded.
+v0.1.3 checks covered **native Windows 10 x64 with the classic Explorer taskbar** and x86 build/tests and read-only detection under WOW64 on Windows 10 x64. Native 32-bit Windows and live effects remain untested. ARM64 is unavailable and unvalidated; there is no supported ARM32 or neutral/AnyCPU package. See [v0.1.3 build evidence](BUILD-v0.1.3.md) and the [architecture/verification matrix](DISTRIBUTION.md#architecture-and-verification). Packaging support does not establish runtime compatibility or download availability. Windows 11, including classic-shell modifications, is unsupported; elevation is not a compatibility workaround. Microsoft Store packaging/protocol activation is excluded.
 
-The [parity inventory (v0.1.2 source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.2/docs/PARITY.md) distinguishes implemented source mappings, dormant upstream code and deliberate differences. It is not a visual-parity claim. Automated release checks cover pure/fake tests, build/script validation and read-only `diagnose --json`; they do not establish live taskbar effects or shell behavior.
+The [parity inventory (v0.1.3 source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.3/docs/PARITY.md) distinguishes implemented source mappings, dormant upstream code and deliberate differences. It is not a visual-parity claim. Automated release checks cover pure/fake tests, build/script validation and read-only `diagnose --json`; they do not establish live taskbar effects or shell behavior.
 
 **startup Enable/update and status checks verified the account-name-to-SID fix (`ac69090`).** The task read back as registered, enabled and owned, with a six-second delay and no warnings. This verifies registration, not actual logon launch. **Actual launch at sign-in, most visual effects and live Rainmeter interaction have not been tested.** Live positioning/restoration, visual parity, performance, real shortcuts/pinning and tray interaction are not established by the automated checks or that startup repair.
 
-See [testing](TESTING.md), [validation status](VALIDATION.md) and the [local validation checklist](INTEGRATION.md). Versioned source links target the v0.1.2 tag. Repository guides are not bundled; local evidence packages are distinct from distribution archives. Earlier results do not substitute for the version-specific validation summary.
+See [testing](TESTING.md), [validation status](VALIDATION.md) and the [local validation checklist](INTEGRATION.md). Versioned source links target the v0.1.3 tag. Repository guides are not bundled; local evidence packages are distinct from distribution archives. Earlier results do not substitute for the version-specific validation summary.
 
 ## Architecture
 
@@ -51,7 +51,7 @@ The upstream VB.NET application is reference material, not a Rust build input or
 
 - Opening help/configuration and reading settings never starts the engine. Save persists only. Apply/start explicitly saves, requests graceful stop, then starts. Failed stop is not bypassed by force-killing or duplicate launch.
 - **Save, Apply, run and startup-delay preference changes never register startup.** Only explicit Enable/Disable changes the rewrite's owned startup registration. Upstream tasks are not migrated or removed.
-- Failed/empty/ambiguous accessibility measurements skip movement rather than guess bounds. MSAA is default; `uia` selects a real alternate provider, not an alias. Individual out-of-process accessibility calls can block despite traversal budgets.
+- Failed/empty/ambiguous accessibility measurements hold the current position rather than guess bounds or reset centering. Read-only discovery failures suspend animation until a fresh measurement; Stop and explicit centering disable still restore owned positions. MSAA is default; `uia` selects a real alternate provider, not an alias. Individual out-of-process accessibility calls can block despite traversal budgets.
 - Full-taskbar and free-span centering use signed coordinates. Independent offsets apply along the taskbar axis: positive right/down, negative left/up, within available space.
 - Styles are `default`, `transparent`, **`transparent-gradient`**, `blur`, `acrylic`, `opaque`. Transparent and transparent-gradient are distinct. Composition APIs are undocumented and build/theme dependent.
 - Capture opacity, region and control visibility before owned changes. Third-party accent state cannot always be captured or exactly restored; fallback requests Windows-managed appearance. Avoid competing taskbar utilities.
@@ -152,7 +152,7 @@ The task name `TaskbarX-Rust.Startup.v1.<current-user-SID>` and ownership marker
 
 Optional user-supplied `.ico` shortcut icons are supported; the [README Start icon links](../README.md#start-icon-files) point to Chris Andriessen's upstream downloads rather than bundled assets. Creating or previewing a shortcut does not hide Start controls. Pinning restrictions are not bypassed.
 
-Shell paths must be absolute, valid Unicode and NUL-free; individual values and the rendered command line are limited to 32766 UTF-16 units. Displayed argv strings are not safe shell-language source to interpolate into cmd.exe or PowerShell. Task Scheduler rejects XML 1.0-invalid controls and possible `%...%` expansion (conservatively, two or more percent characters in a field). Shell Link target/working-directory/icon paths of 260 UTF-16 units or longer, or containing `%`, fail explicitly rather than truncate or expand. Shortcut destinations must be explicit absolute `.lnk` paths with an existing parent; non-regular/reparse-point destinations and unrelated/modified links are refused. Ownership markers detect accidental changes, not malicious changes by another process running as the same user. A supplied icon's availability, format and rights are the user's responsibility; correct rendering is not guaranteed. The tray copies Windows' system `IDI_APPLICATION` icon; no bundled/runtime icon asset is required. See [shell APIs and limitations (v0.1.2 source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.2/docs/SHELL.md).
+Shell paths must be absolute, valid Unicode and NUL-free; individual values and the rendered command line are limited to 32766 UTF-16 units. Displayed argv strings are not safe shell-language source to interpolate into cmd.exe or PowerShell. Task Scheduler rejects XML 1.0-invalid controls and possible `%...%` expansion (conservatively, two or more percent characters in a field). Shell Link target/working-directory/icon paths of 260 UTF-16 units or longer, or containing `%`, fail explicitly rather than truncate or expand. Shortcut destinations must be explicit absolute `.lnk` paths with an existing parent; non-regular/reparse-point destinations and unrelated/modified links are refused. Ownership markers detect accidental changes, not malicious changes by another process running as the same user. A supplied icon's availability, format and rights are the user's responsibility; correct rendering is not guaranteed. The tray copies Windows' system `IDI_APPLICATION` icon; no bundled/runtime icon asset is required. See [shell APIs and limitations (v0.1.3 source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.3/docs/SHELL.md).
 
 ### Examples
 
@@ -230,7 +230,7 @@ The default Cargo target is a unique `dist/cargo-target/<id>` directory. An expl
 
 The local `scripts/release.ps1` workflow repeats x64 verification and packages both Rust executables, broad documentation/sample, dependency inventory, SHA-256 checksums and verification/build evidence under unique `dist/` paths. Its ZIP may include local paths and desktop diagnostics: it is an **evidence package, not a distribution archive**. `scripts/package-preview.ps1` is an older x64-oriented repackager of a checksummed local candidate, with a different name/layout. Use the [allowlisted distribution workflow](DISTRIBUTION.md#offline-packaging-and-fixture-checks) for portable ZIP/Rainmeter packages.
 
-These scripts do not sign, publish, upload, install, push or alter an existing `app/` deployment. The local build procedure is locked and repeatable, **not a byte-identical archive guarantee**. See [validation checklist (v0.1.2 source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.2/docs/INTEGRATION.md). Build scripts and source are not part of the portable user workflow.
+These scripts do not sign, publish, upload, install, push or alter an existing `app/` deployment. The local build procedure is locked and repeatable, **not a byte-identical archive guarantee**. See [validation checklist (v0.1.3 source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.3/docs/INTEGRATION.md). Build scripts and source are not part of the portable user workflow.
 
 ## License and attribution
 

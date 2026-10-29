@@ -6,18 +6,18 @@
 
 An **independent Rust rewrite of Chris Andriessen's [TaskbarX](https://github.com/ChrisAnd1998/TaskbarX)** for taskbar positioning and appearance. Not an official upstream release.
 
-**v0.1.2** provides complete unsigned portable packages for Windows 10.
+**v0.1.3** provides complete unsigned portable packages for Windows 10.
 
 ## Downloads / quick start
 
-Once available, download one complete, unsigned package, not separate EXEs. [Planned v0.1.2 release](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.2).
+Download one complete, unsigned package, not separate EXEs. [v0.1.3 release](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.3).
 
 | Architecture | Portable ZIP | Optional Rainmeter launcher |
 | --- | --- | --- |
-| x64 (64-bit Intel/AMD Windows) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.rmskin) |
-| x86 (32-bit; limited historical validation) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.rmskin) |
+| x64 (64-bit Intel/AMD Windows) | [Download ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.3/TaskbarX-Rust_0.1.3_x64.zip) | [Download .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.3/TaskbarX-Rust_0.1.3_x64.rmskin) |
+| x86 (32-bit; limited historical validation) | [Download ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.3/TaskbarX-Rust_0.1.3_x86.zip) | [Download .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.3/TaskbarX-Rust_0.1.3_x86.rmskin) |
 
-**Windows 10 classic taskbar only; Windows 11 is unsupported.** v0.1.2 checks passed natively on x64 and under WOW64 for x86, including read-only detection. Native 32-bit Windows and live effects were not tested. ARM64 is unavailable and unvalidated; no ARM32 or neutral/AnyCPU build is provided. See [build evidence](docs/BUILD-v0.1.2.md) and [package details](docs/DISTRIBUTION.md).
+**Windows 10 classic taskbar only; Windows 11 is unsupported.** v0.1.3 checks passed natively on x64 and under WOW64 for x86, including read-only detection. Native 32-bit Windows and live effects were not tested. ARM64 is unavailable and unvalidated; no ARM32 or neutral/AnyCPU build is provided. See [build evidence](docs/BUILD-v0.1.3.md) and [package details](docs/DISTRIBUTION.md).
 
 1. When available, download the matching ZIP and **extract all files into a stable folder**, keeping both EXEs together. Keep Windows security checks enabled; packages are unsigned.
 2. Open `Open Settings.cmd` or `taskbarx-configurator.exe`. Opening settings **does not start the engine**.

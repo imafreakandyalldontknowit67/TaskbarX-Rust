@@ -23,7 +23,7 @@ param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$BinaryDirectory,
     [Parameter(Mandatory)][ValidateSet('x64', 'x86', 'arm64')][string]$Architecture,
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$OutputDirectory,
-    [ValidateNotNullOrEmpty()][string]$Version = '0.1.2'
+    [ValidateNotNullOrEmpty()][string]$Version = '0.1.3'
 )
 
 Set-StrictMode -Version Latest

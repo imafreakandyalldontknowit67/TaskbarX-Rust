@@ -432,7 +432,7 @@ impl State {
         // Never reuse an animation across an HWND/PID/creation-time replacement.
         // An absent identity is stale, not a target for a restoration write.
         // Session retains its own identity-checked restoration records. Empty
-        // measurements of still-present taskbars are restored below instead.
+        // measurements of still-present taskbars freeze movement until recovery.
         self.animations.retain(|id, _| ids.contains(id));
         // Feature/movement ownership survives gaps too; the backend validates
         // identities before restoring. Only transient animation state is pruned.
@@ -466,8 +466,11 @@ impl State {
             }
             let Some((axis, target, range)) = proposal(&s, settings) else {
                 self.animations.remove(&s.id);
-                // Movement ownership survives transient discovery gaps.
-                if self.moved.contains(&s.id) {
+                // An absent/ambiguous measurement is not a request to undo
+                // centering. Explorer can report one while an overlay opens.
+                // Freeze writes, retain restoration ownership, and rediscover;
+                // otherwise every gap causes an original-position/center jump.
+                if !settings.center && self.moved.contains(&s.id) {
                     backend.restore_position(&s.id)?;
                     self.moved.remove(&s.id);
                 }
@@ -750,20 +753,34 @@ fn run_loop(
         if let Err(error) = update {
             // String-only native failures cannot classify stale vs inaccessible
             // handles. Roll back partial work; identity validation is backend-owned.
-            let environment = state.environment.take();
-            state = State {
-                environment,
-                ..State::default()
-            };
-            let cleanup = backend.restore();
-            if !cleanup.is_empty() {
-                return combine_cleanup(Err(error), cleanup);
+            if discovery_failed {
+                // Discovery is read-only. Do not undo a healthy centered layout
+                // just because Explorer was transiently unavailable. Discard
+                // stale animation frames but retain identity-checked journals.
+                state.animations.clear();
+            } else {
+                let environment = state.environment.take();
+                state = State {
+                    environment,
+                    ..State::default()
+                };
+                let cleanup = backend.restore();
+                if !cleanup.is_empty() {
+                    return combine_cleanup(Err(error), cleanup);
+                }
             }
             failures = failures.saturating_add(1);
             if error == MODERN_TASKBAR_ERROR || (!discovery_failed && failures >= 3) {
                 return Err(error);
             }
-            warn(&format!("{error}; restored partial changes, rediscovering"));
+            warn(&format!(
+                "{error}; {}, rediscovering",
+                if discovery_failed {
+                    "holding position"
+                } else {
+                    "restored partial changes"
+                }
+            ));
             retry_after = control
                 .now_ms()
                 .saturating_add(250 * (1u64 << failures.saturating_sub(1).min(4)));

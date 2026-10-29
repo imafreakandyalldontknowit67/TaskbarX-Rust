@@ -364,10 +364,10 @@ try {
         $machine = @{ x64 = 0x8664; x86 = 0x014c; arm64 = 0xaa64 }[$architecture]
         $fixture = New-FixtureRepository $architecture $machine
         [IO.File]::SetAttributes((Join-Path $fixture.Root $noticeNames[1]), [IO.FileAttributes]::Hidden)
-        foreach ($version in @('0.1.2', '1.2.3-rc.4+offline_7')) {
+        foreach ($version in @('0.1.3', '1.2.3-rc.4+offline_7')) {
             $output = New-OutputPath
             $arguments = @{ Fixture = $fixture; Architecture = $architecture; Output = $output }
-            if ($version -ne '0.1.2') {
+            if ($version -ne '0.1.3') {
                 $arguments.Version = $version
                 [void][IO.Directory]::CreateDirectory($output) # Explicit existing empty output is supported.
             }
