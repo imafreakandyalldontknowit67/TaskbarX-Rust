@@ -1795,7 +1795,7 @@ fn is_form_control(id: u16) -> bool {
 unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
     if msg == WM_NCCREATE {
         let create = &*(lp.0 as *const CREATESTRUCTW);
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as isize);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as _);
     }
     if msg == WM_NCDESTROY {
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);

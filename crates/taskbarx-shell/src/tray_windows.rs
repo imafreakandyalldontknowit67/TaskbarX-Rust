@@ -124,7 +124,10 @@ impl Native {
         let tip: Vec<u16> = "TaskbarX - Settings, Restart, Stop"
             .encode_utf16()
             .collect();
-        data.szTip[..tip.len()].copy_from_slice(&tip);
+        // NOTIFYICONDATAW is packed on x86; never borrow its array field.
+        let mut tooltip = [0u16; 128];
+        tooltip[..tip.len()].copy_from_slice(&tip);
+        data.szTip = tooltip;
         data.Anonymous.uVersion = NOTIFYICON_VERSION_4;
         data
     }
@@ -450,7 +453,7 @@ unsafe extern "system" fn window_proc(
             return LRESULT(0);
         }
         SetLastError(ERROR_SUCCESS);
-        let previous = SetWindowLongPtrW(hwnd, GWLP_USERDATA, state as isize);
+        let previous = SetWindowLongPtrW(hwnd, GWLP_USERDATA, state as _);
         if previous == 0 && GetLastError() != ERROR_SUCCESS {
             return LRESULT(0);
         }
