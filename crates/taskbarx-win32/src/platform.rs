@@ -603,6 +603,28 @@ fn measure(
 }
 
 impl Api for Windows {
+    fn obsolete(&mut self, id: &TaskbarId) -> bool {
+        if [id.root, id.task_list, id.parent]
+            .iter()
+            .any(|h| !unsafe { IsWindow(Some(hwnd(*h))) }.as_bool())
+        {
+            return true;
+        }
+        // Successful identity reads establish replacement. Failed reads alone do not.
+        if let Ok(actual) = identity(hwnd(id.root), self.build) {
+            return actual != *id;
+        }
+        if let Ok(actual_pid) = pid(hwnd(id.root)) {
+            if actual_pid != id.process_id {
+                return true;
+            }
+            if let Ok(created) = process_started(actual_pid) {
+                return created != id.process_started;
+            }
+        }
+        false
+    }
+
     fn discover(&mut self) -> Result<Discovery, String> {
         let _dpi = self.dpi.enter()?;
         let mut d = Discovery {

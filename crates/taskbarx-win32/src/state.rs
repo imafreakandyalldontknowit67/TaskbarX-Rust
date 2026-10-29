@@ -40,6 +40,10 @@ pub(crate) fn accent(style: Style, mut rgba: [u8; 4]) -> Option<Accent> {
 pub(crate) trait Api {
     fn discover(&mut self) -> Result<Discovery, String>;
     fn validate(&mut self, id: &TaskbarId) -> Result<(), String>;
+    // True only for positively identified destruction/replacement, not query errors.
+    fn obsolete(&mut self, _id: &TaskbarId) -> bool {
+        false
+    }
     fn snapshot(&mut self, id: &TaskbarId) -> Result<TaskbarSnapshot, String>;
     fn position(&mut self, id: &TaskbarId) -> Result<(Point, bool), String>;
     fn move_to(&mut self, id: &TaskbarId, p: Point, expected: (Point, bool)) -> Result<(), String>;
@@ -187,6 +191,10 @@ impl<A: Api> Controller<A> {
         let ids: Vec<_> = self.changes.keys().copied().collect();
         let mut errors = Vec::new();
         for id in ids {
+            if self.api.obsolete(&id) {
+                self.changes.remove(&id);
+                continue;
+            }
             if let Err(e) = self.restore_position(&id) {
                 errors.push(format!("Position restoration {id:?}: {e}"));
             }

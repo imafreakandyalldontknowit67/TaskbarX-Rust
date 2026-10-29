@@ -418,3 +418,54 @@ fn changed_task_list_in_same_root_does_not_rebaseline_applied_style() {
     assert!(c.set_style(&new_id, Style::Opaque, [0; 4]).is_err());
     assert_eq!(c.api.log.borrow().len(), n);
 }
+
+#[test]
+fn positively_obsolete_journal_entries_do_not_block_explorer_recovery() {
+    struct Gone(Fake);
+    impl Api for Gone {
+        fn obsolete(&mut self, id: &TaskbarId) -> bool {
+            !self.0.live.contains(id)
+        }
+        fn discover(&mut self) -> Result<Discovery, String> {
+            self.0.discover()
+        }
+        fn validate(&mut self, id: &TaskbarId) -> Result<(), String> {
+            self.0.validate(id)
+        }
+        fn snapshot(&mut self, id: &TaskbarId) -> Result<TaskbarSnapshot, String> {
+            self.0.snapshot(id)
+        }
+        fn position(&mut self, id: &TaskbarId) -> Result<(Point, bool), String> {
+            self.0.position(id)
+        }
+        fn move_to(&mut self, id: &TaskbarId, p: Point, e: (Point, bool)) -> Result<(), String> {
+            self.0.move_to(id, p, e)
+        }
+        fn query_accent(&mut self, id: &TaskbarId) -> Result<Option<Accent>, String> {
+            self.0.query_accent(id)
+        }
+        fn apply_accent(&mut self, id: &TaskbarId, a: Accent) -> Result<(), String> {
+            self.0.apply_accent(id, a)
+        }
+        fn restore_accent(
+            &mut self,
+            id: &TaskbarId,
+            a: Option<Accent>,
+        ) -> Result<Option<String>, String> {
+            self.0.restore_accent(id, a)
+        }
+    }
+    let mut c = Controller::new(Gone(Fake::new()));
+    c.discover().unwrap();
+    c.move_task_list(&id(1), Point { x: 100, y: 3 }).unwrap();
+    c.set_style(&id(1), Style::Blur, [0; 4]).unwrap();
+    c.api.0.live.remove(&id(1));
+    c.api.0.log.borrow_mut().clear();
+    assert!(c.restore().is_empty());
+    assert!(c.api.0.log.borrow().is_empty());
+    assert!(c.changes.is_empty());
+    c.api.0.live.insert(id(1));
+    c.discover().unwrap();
+    c.move_task_list(&id(1), Point { x: 200, y: 3 }).unwrap();
+    assert!(c.restore().is_empty());
+}
