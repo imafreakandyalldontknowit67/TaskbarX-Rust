@@ -33,7 +33,9 @@ $summary = [ordered]@{
 }
 Write-JsonFile -Path $summaryPath -Value $summary
 $oldTargetDir = [Environment]::GetEnvironmentVariable('CARGO_TARGET_DIR', 'Process')
+$oldEncodedFlags = [Environment]::GetEnvironmentVariable('CARGO_ENCODED_RUSTFLAGS', 'Process')
 try {
+    . (Join-Path $PSScriptRoot 'set-build-path-remapping.ps1')
     $env:CARGO_TARGET_DIR = New-CargoTargetDirectory -Root $root -RequestedDirectory $oldTargetDir
     $summary.cargo_target_directory = $env:CARGO_TARGET_DIR
     $common = @{ WorkingDirectory = $root; EvidenceDirectory = $evidence }
@@ -72,7 +74,10 @@ try {
 } finally {
     $summary.finished_utc = [DateTime]::UtcNow.ToString('o')
     try { Write-JsonFile -Path $summaryPath -Value $summary }
-    finally { [Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', $oldTargetDir, 'Process') }
+    finally {
+        [Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', $oldTargetDir, 'Process')
+        [Environment]::SetEnvironmentVariable('CARGO_ENCODED_RUSTFLAGS', $oldEncodedFlags, 'Process')
+    }
 }
 Write-Host "Verification passed (read-only desktop diagnostics only). Evidence: $evidence"
 [pscustomobject]@{
