@@ -1,3 +1,15 @@
+## Startup verification hotfix (2026-10-29)
+
+Commit `ac69090` resolves account names returned by Task Scheduler to SIDs before
+ownership comparison. Windows returned a bare username for the principal and a
+DOMAIN\username trigger even though registration XML specified SIDs. The old
+comparison incorrectly reported a successful registration as foreign.
+
+After the fix: 30 shell tests, strict shell Clippy, and the locked release workspace
+build passed. The installed binary successfully performed Enable/update and then
+read back the real existing task: registered, enabled, owned, delay 6 seconds,
+no warnings. This was the user's requested startup repair, separate from the
+read-only release procedure. Actual launch at sign-in is still not tested.
 # Validation status
 
 ## Integrated feature validation (2026-10-29 UTC)
