@@ -4,7 +4,7 @@ An **independent Rust rewrite** of [ChrisAnd1998/TaskbarX](https://github.com/Ch
 
 ## Quick use
 
-**v0.1.0 is an unsigned first preview**, targeting native Windows 10 x64 with the classic Explorer taskbar only. Use the [README downloads and quick start](../README.md#downloads--quick-start) for the planned release links; these links are not evidence of publication.
+**v0.1.0 is an unsigned first preview**, targeting native Windows 10 x64 with the classic Explorer taskbar only. Use the [README downloads and quick start](../README.md#downloads--quick-start) for release downloads (repository access is required while private).
 
 1. Extract the portable ZIP to a stable folder. Keep `taskbarx.exe` and `taskbarx-configurator.exe` together.
 2. Open `taskbarx-configurator.exe` or the packaged `Open Settings.cmd`. Opening settings does not start the engine.
@@ -26,7 +26,7 @@ The [parity inventory (repository source)](https://github.com/imafreakandyalldon
 
 **Source `ac69090` includes the live-verified startup enable/status account-name-to-SID fix.** In a separate user-requested repair, the installed binary enabled/updated and read back the real task as registered, enabled and owned, with a six-second delay and no warnings. This verifies that operation, not actual logon launch. **Actual launch at sign-in and most visual effects have not been live-tested.** Live positioning/restoration, visual parity, performance, real shortcuts/pinning and tray interaction are not established by the automated checks or that startup repair.
 
-See [testing (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/TESTING.md), [validation status (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/VALIDATION.md) and [release gates (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/INTEGRATION.md). These developer documents, along with PARITY and SHELL, are deliberately excluded from the portable package; their repository links target the planned v0.1.0 source tag and require repository access. They are not required for basic use of this guide. A local verification ZIP is not evidence that a release was signed or published.
+See [testing (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/TESTING.md), [validation status (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/VALIDATION.md) and [release gates (repository source)](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/blob/v0.1.0/docs/INTEGRATION.md). These developer documents, along with PARITY and SHELL, are deliberately excluded from the portable package; their repository links target the v0.1.0 source tag and require repository access. They are not required for basic use of this guide. A local verification ZIP is not evidence that a release was signed or published.
 
 ## Architecture
 

@@ -14,7 +14,7 @@ An **independent Rust rewrite of Chris Andriessen's [TaskbarX](https://github.co
 - **Recommended: [portable ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/TaskbarX-Rust-v0.1.0-windows-x64.zip)** · [v0.1.0 release page](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.0)
 - Individual downloads: [taskbarx.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx.exe) and [taskbarx-configurator.exe](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.0/taskbarx-configurator.exe). **Both EXEs must be in the same folder.**
 
-These are planned release links, not confirmation that publishing has occurred. This preview is unsigned; keep Windows security checks enabled.
+This preview is unsigned; keep Windows security checks enabled. Downloads require access while this repository is private.
 
 1. Extract the ZIP to a stable folder.
 2. Open `taskbarx-configurator.exe` or the packaged `Open Settings.cmd`. Opening the GUI **does not start the engine**.
@@ -26,7 +26,9 @@ Closing the GUI leaves the engine running. Use **Stop TaskbarX** to request grac
 
 - Primary/secondary taskbar centering, signed offsets and centering between controls and tray.
 - 42 easing choices, including instant positioning; configurable animation and polling.
-- Background styles, RGBA color, separate opacity, rounding/segments and visibility controls.
+- Transparent, transparent-gradient, blur, acrylic and opaque backgrounds, or Windows default.
+- RGBA color, separate taskbar opacity, rounded corners, segments and Start/tray visibility.
+- Battery overrides, fullscreen pause and resolution-based centering exceptions.
 - Native settings GUI, read-only diagnostics, optional tray icon and explicit startup/shortcut actions.
 
 See [settings and defaults](docs/USER-GUIDE.md#settings) and [behavioral safeguards](docs/USER-GUIDE.md#safety-and-behavior). Availability depends on the supported shell and successful measurements; this is not a visual-parity or performance claim.
@@ -35,7 +37,7 @@ See [settings and defaults](docs/USER-GUIDE.md#settings) and [behavioral safegua
 
 Modern Windows 11 taskbars are **unsupported**. Shell patching and elevation are not supported workarounds. Appearance APIs are build/theme dependent; avoid competing taskbar utilities.
 
-Source `ac69090` includes the live-verified startup enable/status account-name-to-SID fix. **Actual logon launch and most visual effects have not been live-tested.** Automated checks do not verify all features or restoration; see [verification scope](docs/USER-GUIDE.md#compatibility-and-evidence).
+Startup registration and status have been verified on Windows 10, including the account-name-to-SID fix. **Actual logon launch and most visual effects have not been live-tested.** Automated checks do not verify all features or restoration; see [verification scope](docs/USER-GUIDE.md#compatibility-and-evidence).
 
 ## Start icon files
 
