@@ -1,29 +1,29 @@
 <p>
-  <img src="docs/assets/taskbarx-rust-banner.png" width="100%" alt="Composite of Chris Andriessen's TaskbarX banner with an embedded Rust badge near the bottom-right TaskbarX logo; upstream-derived artwork, not this Rust build">
+  <img src="docs/assets/taskbarx-rust-banner.png" width="100%" alt="Original AI-generated conceptual TaskbarX-Rust illustration with abstract taskbar motifs; not an application screenshot">
 </p>
 
 # TaskbarX-Rust
 
 An **independent Rust rewrite of Chris Andriessen's [TaskbarX](https://github.com/ChrisAnd1998/TaskbarX)** for taskbar positioning and appearance. Not an official upstream release.
 
-**v0.1.1** provides complete, unsigned portable packages. The repository remains private.
+**v0.1.2 is planned and pending verification.** The links below are prospective; they do not indicate that packages have been built, tested or made available.
 
 ## Downloads / quick start
 
-Download one package, not separate EXEs. [Latest release](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/latest).
+Once available, download one complete, unsigned package, not separate EXEs. [Planned v0.1.2 release](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/tag/v0.1.2).
 
 | Architecture | Portable ZIP | Optional Rainmeter launcher |
 | --- | --- | --- |
-| x64 (recommended for 64-bit Intel/AMD Windows) | [Download ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x64.zip) | [Download .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x64.rmskin) |
-| x86 (32-bit; limited validation) | [Download ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x86.zip) | [Download .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.1/TaskbarX-Rust_0.1.1_x86.rmskin) |
+| x64 (64-bit Intel/AMD Windows) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x64.rmskin) |
+| x86 (32-bit; limited historical validation) | [Planned ZIP](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.zip) | [Planned .rmskin](https://github.com/imafreakandyalldontknowit67/TaskbarX-Rust/releases/download/v0.1.2/TaskbarX-Rust_0.1.2_x86.rmskin) |
 
-**Windows 10 classic taskbar only.** x64 passed native build/test checks. x86 passed build/tests and read-only detection under WOW64 on Windows 10 x64; native 32-bit Windows and live effects were not tested. ARM64 is unavailable because its Microsoft build tools are missing. No ARM32 or neutral/AnyCPU build is provided. See [build evidence](docs/BUILD-v0.1.1.md) and [package details](docs/DISTRIBUTION.md).
+**Windows 10 classic taskbar only; Windows 11 is unsupported.** Historical v0.1.1 checks passed natively on x64 and under WOW64 for x86, including read-only detection. Native 32-bit Windows and live effects were not tested. ARM64 is unavailable and unvalidated; no ARM32 or neutral/AnyCPU build is provided. See [historical v0.1.1 evidence](docs/BUILD-v0.1.1.md) and [package details](docs/DISTRIBUTION.md); these results do not validate v0.1.2.
 
-1. Download the matching ZIP and **extract all files into a stable folder**, keeping both EXEs together. Keep Windows security checks enabled; the binaries are unsigned.
+1. When available, download the matching ZIP and **extract all files into a stable folder**, keeping both EXEs together. Keep Windows security checks enabled; packages are unsigned.
 2. Open `Open Settings.cmd` or `taskbarx-configurator.exe`. Opening settings **does not start the engine**.
 3. Select your settings and press **Apply** to save and start/restart the engine. **Save** only persists JSON; **Apply never enables startup**.
 
-Each ZIP includes both EXEs, `Open Settings.cmd`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `settings.sample.json`, a concise `README.txt` and `docs/licenses/`. Repository Markdown guides, source, artwork and private developer evidence are not bundled. GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives are source, **not ready-to-run downloads**.
+The ZIP layout includes both EXEs, `Open Settings.cmd`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, root-level `settings.sample.json`, a concise `README.txt` and `docs/licenses/`. Repository Markdown guides, source, artwork and local build evidence are not bundled. GitHub's automatic **Source code (zip)** and **Source code (tar.gz)** archives are source, **not ready-to-run downloads**.
 
 Rainmeter is optional and separately installed: use an available matching `.rmskin`, manually load `Launcher.ini`, then explicitly click its settings launcher. Installation/loading/refresh does not launch the configurator, apply the engine or register TaskbarX startup. The click only opens settings; Apply and Startup remain separate actions. See the [Rainmeter workflow and official references](docs/DISTRIBUTION.md#optional-rainmeter-workflow).
 
@@ -44,7 +44,7 @@ See [settings and defaults](docs/USER-GUIDE.md#settings) and [behavioral safegua
 
 Modern Windows 11 taskbars are **unsupported**. Shell patching and elevation are not supported workarounds. Appearance APIs are build/theme dependent; avoid competing taskbar utilities.
 
-Startup registration and status have been verified on Windows 10, including the account-name-to-SID fix. **Actual logon launch and most visual effects have not been live-tested.** Automated checks do not verify all features or restoration; see [verification scope](docs/USER-GUIDE.md#compatibility-and-evidence).
+Historical Windows 10 checks verified startup Enable/update and status, including the account-name-to-SID fix. **Actual logon launch, most visual effects and live Rainmeter interaction have not been tested.** Automated checks do not verify all features or restoration; see [verification scope](docs/USER-GUIDE.md#compatibility-and-evidence).
 
 ## Start icon files
 
@@ -82,4 +82,4 @@ Original TaskbarX by **Chris Andriessen**. **Copyright (c) 2021 Chris Andriessen
 
 Upstream-like package choices do not reproduce upstream .NET internals: this native Rust rewrite does not need upstream ModernWPF, TaskScheduler or Emoji.Wpf DLLs or their resource directories. Never relabel upstream binaries as Rust builds. Actual dependencies come from Cargo (including `clap`, `serde`, `serde_json` and `windows`); this is not a claim that every system dependency is statically linked. See [guide attribution](docs/USER-GUIDE.md#license-and-attribution).
 
-The composite combines Chris Andriessen's upstream TaskbarX banner with an embedded Rust badge; it depicts upstream, not this build, and is not bundled in distribution packages. Separate artwork rights require review before public distribution. Rust logo artwork is by Rust project contributors (CC BY 4.0); no Rust project or Foundation endorsement is implied. Package formats confer no endorsement. See [artwork provenance](docs/assets/README.md).
+The banner is an original AI-generated conceptual illustration, not an application screenshot or upstream-derived artwork, and is not bundled in distribution packages. No upstream, Microsoft, Rainmeter, Rust project or Rust Foundation endorsement is implied. See [artwork provenance](docs/assets/README.md).

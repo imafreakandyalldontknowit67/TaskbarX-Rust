@@ -1,21 +1,21 @@
-# Integration and local release checklist
+# Workspace validation and local packaging
 
-This checklist applies to the **actual combined workspace**, not an obsolete branch count or a documentation-only build. It does not require new repositories, worktrees, commits, any orchestration CLI, publication or pushing.
+This checklist covers the six-package Rust 2021 Cargo workspace and native Windows x64 local evidence workflow on PowerShell 5.1+. **v0.1.2 verification is pending**; historical results are recorded separately in [VALIDATION](VALIDATION.md) and [BUILD-v0.1.1](BUILD-v0.1.1.md).
 
 ## Before collecting evidence
 
-- [ ] All six workspace packages exist: root `taskbarx-rust`, core, win32, config, configurator and **shell**. CLI and GUI binary targets are `taskbarx` and `taskbarx-configurator`.
+- [ ] All six packages exist: `taskbarx-rust`, `taskbarx-core`, `taskbarx-win32`, `taskbarx-config`, `taskbarx-configurator` and `taskbarx-shell`. CLI and GUI binary targets are `taskbarx` and `taskbarx-configurator`.
 - [ ] Native Windows x64, `x86_64-pc-windows-msvc` Rust/Cargo, rustfmt, **Clippy**, MSVC C++ tools and Windows SDK are available.
 - [ ] Root `Cargo.lock` is the real reviewed integrated dependency graph. Verification/release does **not** generate or repair it. Dependency-resolving commands use `--locked`.
 - [ ] Review tests/subprocesses for no desktop mutation. Use fake startup/shortcut/tray adapters, synthetic taskbars and temporary config files. No engine run/stop/configure, GUI launch/Apply, Start-menu invocation, startup changes, live shortcuts, tray actions, process killing or Explorer restart.
 - [ ] Audit no-argument/help and `diagnose --json` paths before the first probe. Scripts do not sandbox unsafe code.
 - [ ] Reconcile [PARITY](PARITY.md), README, sample JSON, shared validator, CLI, GUI and runtime. A persisted but unused field is not completed parity. Resolve pending labels against actual source/tests.
 - [ ] Confirm Save/Apply/run/preference changes cannot register startup. Enable/Disable owns only this rewrite's task; shortcut remove/replacement rejects unrelated files. Upstream tasks remain untouched.
-- [ ] Freeze source edits during final validation. Do not collect release evidence while other workers/builds change the candidate.
+- [ ] Keep the source and lockfile unchanged during validation so results identify one consistent candidate.
 
 ## Required gates
 
-From the integrated checkout:
+From the Cargo workspace root:
 
 ```powershell
 powershell.exe -NoProfile -File .\scripts\test-helpers.ps1
@@ -30,9 +30,9 @@ Verification requires `cargo fmt --all -- --check`, `cargo test --workspace --lo
 
 Release repeats verification, rather than trusting older results, and packages verified compiler-reported release artifacts. Check actual logged argument arrays and hashes. Without an override, Cargo uses a unique `dist/cargo-target/<id>`. Explicit `CARGO_TARGET_DIR` may be outside the checkout, but must be an absolute new or empty directory outside the checkout's `target/` and `app/` trees. Relative/drive-relative/root-relative paths, files, occupied directories and reparse-point paths/ancestors are rejected. A create-new ownership marker prevents concurrent claims of the same empty directory. Original environment settings are restored.
 
-On failure, retain logs, correct the owning source and rerun the full gate. Missing packages/lockfile or unsafe paths are failures, not skipped successes. Do not drop workspace members, weaken lint/tests, substitute upstream executables or manufacture placeholders.
+On failure, retain logs, correct the source and rerun the full gate. Missing packages/lockfile or unsafe paths are failures, not skipped successes. All workspace members and mandatory checks must remain included.
 
-## Output
+## Local evidence output
 
 Unique generated outputs are retained under `dist/`:
 
@@ -44,7 +44,9 @@ Unique generated outputs are retained under `dist/`:
 
 Script-only helper fixtures/logs are separate: unique `%TEMP%/TaskbarX-Rust-script-tests-<UTC>-<GUID>` directories, not `dist/script-tests` or application release evidence. Historical outputs are left untouched.
 
-Use paths returned by the scripts, not guessed `target/release` or a pre-existing `app/` deployment. The authoritative final packaging result is the external `release.json`; the packaged evidence is a pre-archive snapshot to avoid self-reference. Generated `dist/`/build outputs are not source to commit. Old packages must not be recursively removed or overwritten.
+Use paths returned by the scripts, not guessed `target/release` or a pre-existing `app/` deployment. The authoritative final packaging result is the external `release.json`; the packaged evidence is a pre-archive snapshot to avoid self-reference. Generated outputs are not source files; existing packages are preserved.
+
+These outputs are **local evidence packages, not distribution archives**. For the minimal portable ZIP/Rainmeter payload and explicit `-Version 0.1.2` examples, see [offline distribution packaging](DISTRIBUTION.md#offline-packaging-and-fixture-checks).
 
 ## Acceptance
 
@@ -55,8 +57,9 @@ Use paths returned by the scripts, not guessed `target/release` or a pre-existin
 - [ ] Independently hash both EXEs and ZIP with `Get-FileHash -Algorithm SHA256 -LiteralPath <file>`; compare recorded checksums. Validate every payload checksum when transporting.
 - [ ] Preserve compiler/Cargo/OS versions, source Git revision/status, root lockfile hash, dependency inventory and exact command logs. Evidence can contain local filesystem paths; review before sharing.
 - [ ] Review dependency licenses and add required texts/notices under `docs/licenses/` before external distribution. Declared license expressions are inventory, not compliance certification. Repackage after notice changes.
-- [ ] Reconcile final source/API/test links in PARITY. Explicitly retain any remaining integration/UI gaps.
+- [ ] Reconcile source/API/test links in PARITY and document remaining coverage gaps.
 - [ ] Report live positioning, styling, restoration, Explorer recovery, startup, shortcuts and tray actions as **NOT EXECUTED** unless separately authorized tests have their own evidence.
-- [ ] Do not publish, sign, upload, push, enable startup, change `app/` or restart Explorer as part of local packaging.
+
+Local scripts do not sign, publish, install, change an existing `app/` deployment or perform live shell actions. Historical startup Enable/status verification is separate from these checks and does not establish launch at sign-in.
 
 This procedure is repeatable with locked resolution, not bit-for-bit reproducibility: timestamps, toolchain, linker/SDK and environment can affect output.

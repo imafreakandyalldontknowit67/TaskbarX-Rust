@@ -1,8 +1,8 @@
 # Native shell integration
 
-## Source status and integration boundary
+## Source and verification scope
 
-The shell crate's public APIs, native adapters and fake tests listed here are present in source. **This is source mapping, not a claim that the final gate or live shell tests passed.** CLI/runtime/configurator wiring remains subject to the integration owner's final reconciliation in [PARITY](PARITY.md) and [VALIDATION](VALIDATION.md). Loading the crate has no side effects.
+The shell crate's public APIs, native adapters and fake tests listed here are wired into the CLI, runtime and configurator. Loading the crate has no side effects. **Source/test mappings are not live shell verification.** See [PARITY](PARITY.md) for mappings and [VALIDATION](VALIDATION.md) for historical results; v0.1.2 verification is pending. Support is limited to the Windows 10 classic taskbar; Windows 11 is unsupported.
 
 | API | Source and non-mutating tests |
 | --- | --- |
@@ -95,4 +95,4 @@ API references used for the adapters: Microsoft's
 [Shell Link GetPath flags](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-ishelllinkw-getpath),
 and [SC_TASKLIST system command](https://learn.microsoft.com/en-us/windows/win32/menurc/wm-syscommand).
 
-**Live startup, links, Start-menu, tray and visual parity remain NOT EXECUTED by the automated release procedure.**
+The automated procedure does not exercise live startup, links, Start-menu or tray actions. A [separate historical startup check](TESTING.md#startup-verification-hotfix-2026-10-29) verified Enable/update and status after the account-name-to-SID fix. Actual sign-in launch, live shortcut/tray behavior and visual parity remain unestablished.
