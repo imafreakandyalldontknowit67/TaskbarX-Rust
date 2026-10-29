@@ -282,7 +282,11 @@ fn replace(source: &Path, destination: &Path) -> io::Result<()> {
             error.raw_os_error().map(|code| code as u32),
             Some(ERROR_ACCESS_DENIED | ERROR_LOCK_VIOLATION | ERROR_SHARING_VIOLATION)
         );
-        if !retryable || attempt == 7 {
+        // Allow roughly one second (1+2+...+512 ms) for competing writers or
+        // scanning handles. The previous 127 ms budget was exhausted by the
+        // four-writer regression under load. Never delete the destination or
+        // turn a permanent permission failure into apparent success.
+        if !retryable || attempt == 10 {
             return Err(error);
         }
         std::thread::sleep(std::time::Duration::from_millis(1 << attempt));
