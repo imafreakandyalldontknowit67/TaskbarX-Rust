@@ -385,6 +385,14 @@ try {
         }
     }
 
+    # Valid PE headers must not bypass the distribution privacy gate.
+    $leaky = New-FixtureRepository 'embedded-profile-path'
+    $leakyBinary = Join-Path $leaky.Binary 'taskbarx.exe'
+    $fakeHome = 'C:' + [char]92 + 'Users' + [char]92 + 'fixture-person' + [char]92 + 'source.rs'
+    [IO.File]::WriteAllBytes($leakyBinary, [byte[]](
+        [IO.File]::ReadAllBytes($leakyBinary) + [Text.Encoding]::ASCII.GetBytes($fakeHome)))
+    Assert-PackageFailure $leaky 'Distribution privacy check failed'
+
     # Corrupt only fixture archives and independently reject every footer defect.
     $validRmskin = [IO.File]::ReadAllBytes($successful.x64.RmskinPath)
     foreach ($mode in @('length-low', 'length-high', 'flags', 'signature', 'nul', 'truncated-one', 'missing-footer', 'short', 'trailing-byte')) {
