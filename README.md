@@ -4,6 +4,8 @@
 
 # TaskbarX-Rust
 
+> **Heads up:** This is a work in progress and probably coded like shit in places. If you find bugs or know a better way to do something, pull requests are welcome. I'll review fixes, merge them, and push out updates.
+
 An **independent Rust rewrite of Chris Andriessen's [TaskbarX](https://github.com/ChrisAnd1998/TaskbarX)** for taskbar positioning and appearance. Not an official upstream release.
 
 **v0.1.3** provides complete unsigned portable packages for Windows 10.
