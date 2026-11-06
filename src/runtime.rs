@@ -484,6 +484,25 @@ impl State {
             let geometry = Geometry::new(&s, &axis);
             match self.animations.get_mut(&s.id) {
                 Some(a) => {
+                    // Explorer may reset the child window even though the icon
+                    // geometry and desired center are unchanged. Once settled,
+                    // repair that displacement on the next frame rather than
+                    // replaying the whole centering animation. Do not snap an
+                    // in-flight animation or a genuine layout/content change.
+                    let settled_drift = a.geometry == geometry
+                        && a.target == target
+                        && a.displayed == a.target
+                        && a.displayed != displayed
+                        && (a.from == a.target
+                            || settings.animation == "none"
+                            || now.saturating_sub(a.started) >= u64::from(settings.animation_ms));
+                    a.stabilize |= settled_drift;
+                    if settled_drift {
+                        warn(&format!(
+                            "taskbar {:#x}: settled position displaced from {target} to {displayed}; correcting without animation",
+                            s.id.root
+                        ));
+                    }
                     // Use the latest actual displayed position, not the original
                     // animation start or a prediction of a frame never sent.
                     if a.geometry != geometry || a.target != target || a.displayed != displayed {

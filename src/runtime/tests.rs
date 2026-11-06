@@ -304,6 +304,96 @@ fn stable_poll_does_not_restart_animation() {
 }
 
 #[test]
+fn settled_position_drift_is_corrected_without_replaying_animation() {
+    for toolbar_compensation in [false, true] {
+        let mut state = State::default();
+        let mut backend = Fake::default();
+        let settings = Settings {
+            toolbar_compensation,
+            ..settings()
+        };
+        state
+            .refresh(
+                &mut backend,
+                discovery(vec![snapshot(1, true, 50)]),
+                &settings,
+                0,
+            )
+            .unwrap();
+        state.frame(&mut backend, &settings, 100).unwrap();
+        assert_eq!(backend.0.borrow().moves.last().unwrap().1, 340);
+
+        // Explorer reset the child position, but no layout/target changed.
+        state
+            .refresh(
+                &mut backend,
+                discovery(vec![snapshot(1, true, 0)]),
+                &settings,
+                400,
+            )
+            .unwrap();
+        state.frame(&mut backend, &settings, 400).unwrap();
+        assert_eq!(backend.0.borrow().moves.last().unwrap().1, 340);
+        assert_eq!(backend.0.borrow().moves.len(), 2);
+        assert!(!state.animating(400, &settings));
+        assert!(backend.0.borrow().position_restores.is_empty());
+    }
+}
+
+#[test]
+fn settled_content_change_still_animates() {
+    let mut state = State::default();
+    let mut backend = Fake::default();
+    let settings = settings();
+    state
+        .refresh(
+            &mut backend,
+            discovery(vec![snapshot(1, true, 50)]),
+            &settings,
+            0,
+        )
+        .unwrap();
+    state.frame(&mut backend, &settings, 100).unwrap();
+    let mut changed = snapshot(1, true, 340);
+    changed.content_rect.as_mut().unwrap().right -= 100;
+    state
+        .refresh(&mut backend, discovery(vec![changed]), &settings, 400)
+        .unwrap();
+    state.frame(&mut backend, &settings, 450).unwrap();
+    assert_eq!(backend.0.borrow().moves.last().unwrap().1, 365);
+    assert!(state.animating(450, &settings));
+    state.frame(&mut backend, &settings, 500).unwrap();
+    assert_eq!(backend.0.borrow().moves.last().unwrap().1, 390);
+}
+
+#[test]
+fn in_flight_displacement_does_not_snap_to_target() {
+    let mut state = State::default();
+    let mut backend = Fake::default();
+    let settings = settings();
+    state
+        .refresh(
+            &mut backend,
+            discovery(vec![snapshot(1, true, 50)]),
+            &settings,
+            0,
+        )
+        .unwrap();
+    state.frame(&mut backend, &settings, 50).unwrap();
+    state
+        .refresh(
+            &mut backend,
+            discovery(vec![snapshot(1, true, 100)]),
+            &settings,
+            60,
+        )
+        .unwrap();
+    state.frame(&mut backend, &settings, 110).unwrap();
+    assert_eq!(backend.0.borrow().moves.last().unwrap().1, 220);
+    assert!(state.animating(110, &settings));
+}
+
+#[test]
 fn discovery_replacement_and_explorer_creation_time_discard_animation() {
     let mut state = State::default();
     let mut backend = Fake::default();
